@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34714.143
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoFetchingMicroserviceSDK", "AutoFetchingMicroserviceSDK\AutoFetchingMicroserviceSDK.csproj", "{5AA13E1B-46A6-4572-B9A9-9604A7E3EB8B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "Test\Test.csproj", "{0D0969D9-1D3F-4AEE-9CF9-52C4A76B36EE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5AA13E1B-46A6-4572-B9A9-9604A7E3EB8B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AA13E1B-46A6-4572-B9A9-9604A7E3EB8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AA13E1B-46A6-4572-B9A9-9604A7E3EB8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AA13E1B-46A6-4572-B9A9-9604A7E3EB8B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0D0969D9-1D3F-4AEE-9CF9-52C4A76B36EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0D0969D9-1D3F-4AEE-9CF9-52C4A76B36EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0D0969D9-1D3F-4AEE-9CF9-52C4A76B36EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0D0969D9-1D3F-4AEE-9CF9-52C4A76B36EE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E5EC12A0-BC4F-470C-A78B-57910D663CC8}
+	EndGlobalSection
+EndGlobal
