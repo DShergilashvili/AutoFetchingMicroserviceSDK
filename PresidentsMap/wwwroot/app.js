@@ -10,7 +10,7 @@ let MAP = [], byId = {}, paths = {};
 let selected = 'GE', date = todayISO();
 let day = { multiplier: 1, special: null, gifts: {} };   // gifts: country code -> {to, from}
 let summary = { count: 0, total: 0, recent: [] };
-let mine = {};        // "GE_2027-02-14" -> certificate id, remembered in this browser
+let mine = {};        // "GE_2027-02-14" -> {id, coups}: gifts bought in this browser, valid until someone stages a coup
 let certs = {};       // certificate id -> full gift
 let stage = 'idle', quoted = 0, err = '', loadErr = '', panelKey = '';
 const draft = { to: '', from: '', msg: '' };
@@ -19,7 +19,9 @@ try { const s = JSON.parse(localStorage.getItem(LS) || '{}'); mine = s.mine || {
 const save = () => { try { localStorage.setItem(LS, JSON.stringify({ mine, from: draft.from })); } catch (e) { } };
 
 const cur = () => selected + '_' + date;
-const priceOf = id => byId[id].p * day.multiplier;
+const priceOf = id => day.gifts[id] ? day.gifts[id].coupPrice : byId[id].p * day.multiplier;
+// Certificate id if this browser bought the presidency and nobody has taken it since.
+const mineId = (country, d, coups) => { const m = mine[country + '_' + d]; return m && m.id && m.coups === coups ? m.id : null; };
 
 async function api(path, body, orderId) {
   const res = await fetch(path, body
@@ -60,7 +62,7 @@ async function loadSummary() {
 }
 async function loadCert(id) {
   try { certs[id] = await api('/api/gifts/' + id); }
-  catch (e) { if (e.status === 404) { for (const k in mine) if (mine[k] === id) delete mine[k]; save(); } }
+  catch (e) { if (e.status === 404) { for (const k in mine) if (mine[k].id === id) delete mine[k]; save(); } }
   panelKey = ''; render();
 }
 
@@ -110,14 +112,14 @@ function startPay() {
 // The purchase request. Sent once in demo mode; with a payment provider it is sent twice,
 // the second time carrying the order the buyer approved.
 function giftAttempt() {
-  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang };
+  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang, price: quoted };
   return {
     key,
     send: orderId => api('/api/gifts', body, orderId),
   };
 }
 async function giftDone(key, g) {
-  certs[g.id] = g; mine[key] = g.id; save();
+  certs[g.id] = g; mine[key] = { id: g.id, coups: g.coups }; save();
   draft.to = ''; draft.msg = '';
   stage = 'idle';
   await Promise.all([loadDay(), loadSummary()]);
@@ -135,7 +137,7 @@ async function pay() {
 
 /* ---------- render ---------- */
 function render() { renderMap(); renderList(); renderPanel(); }
-const cls = id => mine[id + '_' + date] ? ' mine' : day.gifts[id] ? ' taken' : '';
+const cls = id => { const g = day.gifts[id]; return !g ? '' : mineId(id, date, g.coups) ? ' mine' : ' taken'; };
 
 function renderMap() {
   for (const c of MAP) paths[c.id].setAttribute('class', 'c' + cls(c.id) + (c.id === selected ? ' sel' : ''));
@@ -151,7 +153,7 @@ function renderBoard() {
   $('board').hidden = !rows.length; $('board-empty').hidden = !!rows.length;
   $('board').replaceChildren(...rows.filter(x => byId[x.country]).map((x, i) => h('li', { onclick: () => select(x.country, true, x.date) },
     h('span', { class: 'rk', text: i + 1 }),
-    h('span', { class: 'nm' }, x.to + (mine[x.country + '_' + x.date] ? t(' (შენი საჩუქარი)') : ''), h('span', { text: byId[x.country].n + ' · ' + fmt(x.date) })),
+    h('span', { class: 'nm' }, x.to + (mineId(x.country, x.date, x.coups) ? t(' (შენი საჩუქარი)') : ''), h('span', { text: byId[x.country].n + ' · ' + fmt(x.date) })),
     h('span', { class: 'pr', text: money(x.price) }))));
 }
 function renderList() {
@@ -196,7 +198,7 @@ function certificate(c, g) {
 
 function renderPanel() {
   if (!byId[selected]) return;
-  const c = byId[selected], certId = mine[cur()], taken = day.gifts[selected];
+  const c = byId[selected], taken = day.gifts[selected], certId = taken ? mineId(selected, date, taken.coups) : null;
   const key = [cur(), stage, err, quoted, certId, JSON.stringify(taken || 0), day.multiplier, !!certs[certId]].join('|');
   if (key === panelKey) return; panelKey = key;
   const price = priceOf(selected);
@@ -205,22 +207,21 @@ function renderPanel() {
   if (certId) {
     if (certs[certId]) kids.push(...certificate(c, certs[certId]));
     else { kids.push(h('p', { class: 'small', text: t('სერტიფიკატი იტვირთება…') })); loadCert(certId); }
-  } else if (taken) {
-    kids.push(h('dl', { class: 'facts' },
-      h('dt', { text: t('პრეზიდენტი ამ დღეს') }), h('dd', { text: taken.to }),
-      taken.from ? [h('dt', { text: t('გამჩუქებელი') }), h('dd', { text: taken.from })] : null),
-      h('p', { class: 'small', text: t('ეს ქვეყანა ამ დღეს უკვე გაჩუქებულია. ზემოთ აირჩიე სხვა თარიღი ან რუკაზე სხვა ქვეყანა.') }));
   } else if (stage === 'idle') {
+    if (taken) kids.push(h('dl', { class: 'facts' },
+      h('dt', { text: t('პრეზიდენტი ამ დღეს') }), h('dd', { text: taken.to + (taken.coups ? t(' · გადატრიალება №') + taken.coups : '') }),
+      taken.from ? [h('dt', { text: t('გამჩუქებელი') }), h('dd', { text: taken.from })] : null),
+      h('p', { class: 'small', text: t('პრეზიდენტის ჩამოგდება შეიძლება: გადატრიალება 50%-ით მეტი ღირს, ვიდრე მან გადაიხადა.') }));
     kids.push(
-      h('label', { class: 'field' }, t('ვის ჩუქნი'),
+      h('label', { class: 'field' }, taken ? t('ვინ ხდება ახალი პრეზიდენტი') : t('ვის ჩუქნი'),
         h('input', { id: 'f-to', type: 'text', maxlength: '40', value: draft.to, oninput: e => { draft.to = e.target.value; } })),
       h('label', { class: 'field' }, t('შენი სახელი (არასავალდებულო)'),
         h('input', { id: 'f-from', type: 'text', maxlength: '40', autocomplete: 'name', value: draft.from, oninput: e => { draft.from = e.target.value; } })),
       h('label', { class: 'field' }, t('მილოცვა სერტიფიკატზე (არასავალდებულო)'),
         h('textarea', { id: 'f-msg', maxlength: '140', oninput: e => { draft.msg = e.target.value; } }, draft.msg)),
       err ? h('p', { class: 'err', text: err }) : null,
-      h('button', { class: 'btn', type: 'button', onclick: startPay, text: t('აჩუქე ეს დღე · ') + money(price) }),
-      h('p', { class: 'small', text: t('ფასი ქვეყნის ფართობზეა დამოკიდებული. სადღესასწაულო დღეებში (ვალენტინობა, 8 მარტი, ახალი წელი) ორმაგია.') }));
+      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price) }),
+      taken ? null : h('p', { class: 'small', text: t('ფასი ქვეყნის ფართობზეა დამოკიდებული. სადღესასწაულო დღეებში (ვალენტინობა, 8 მარტი, ახალი წელი) ორმაგია.') }));
   } else {
     kids.push(h('div', { class: 'pay' },
       h('div', { text: t('გადასახდელი თანხა') }), h('strong', { text: money(quoted) }),
@@ -245,7 +246,13 @@ function renderPanel() {
     const t = document.createElementNS(NS, 'title'); t.textContent = c.n; p.append(t);
     p.addEventListener('click', () => select(c.id, true)); svg.append(p); paths[c.id] = p;
   }
+  // A certificate's "overthrow" button links here with the country and day preselected.
+  const q = new URLSearchParams(location.search);
+  if (byId[q.get('c')]) selected = q.get('c');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(q.get('d') || '')) { date = q.get('d'); dateEl.value = date; }
   render();
+  if (q.get('c')) zoomCountry(selected);
   loadDay(); loadSummary();
   Pay.ready.then(() => { $('mode').hidden = Pay.enabled; panelKey = ''; render(); });
+  for (const k in mine) if (typeof mine[k] === 'string') mine[k] = { id: mine[k], coups: 0 };   // older saved format
 })();

@@ -37,18 +37,18 @@ app.MapGet("/api/config", (IPaymentGateway payments) => Results.Ok(new { paypalC
 app.MapGet("/api/days/{date}", async (string date, HttpRequest http, AppDb db) =>
 {
     if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", out var day)) return Results.BadRequest();
-    var gifts = await db.Gifts.Where(g => g.Date == day)
-        .Select(g => new { country = g.Country, to = g.To, from = g.From }).ToListAsync();
+    var gifts = (await db.Gifts.Where(g => g.Date == day).ToListAsync())
+        .Select(g => new { country = g.Country, to = g.To, from = g.From, coups = g.Coups, coupPrice = Pricing.CoupPrice(g.Price) });
     return Results.Ok(new { date = day, special = Pricing.SpecialDay(day) is { } name ? Loc.T(Loc.Of(http), name) : null, multiplier = Pricing.Multiplier(day), gifts });
 });
 
 app.MapGet("/api/summary", async (AppDb db) => Results.Ok(new
 {
     count = await db.Gifts.CountAsync(),
-    total = (await db.Gifts.SumAsync(g => (int?)(g.Price + g.CabinetPaid)) ?? 0)
+    total = (await db.Gifts.SumAsync(g => (int?)(g.TotalPaid + g.CabinetPaid)) ?? 0)
           + (await db.Appointments.SumAsync(a => (int?)a.TotalPaid) ?? 0),
     recent = await db.Gifts.OrderByDescending(g => g.CreatedAt).Take(8)
-        .Select(g => new { country = g.Country, date = g.Date, to = g.To, price = g.Price }).ToListAsync(),
+        .Select(g => new { country = g.Country, date = g.Date, to = g.To, price = g.Price, coups = g.Coups }).ToListAsync(),
 }));
 
 // The certificate id is the only key to the personal message, so it is never listed publicly.
@@ -73,30 +73,36 @@ app.MapPost("/api/gifts", async (GiftRequest req, HttpRequest http, AppDb db, Co
     if (from.Length > Limits.Name) return Problem(http, "შენი სახელი ძალიან გრძელია.");
     if (message.Length > Limits.Message) return Problem(http, "მილოცვა ძალიან გრძელია (მაქსიმუმ 140 სიმბოლო).");
 
-    const string takenText = "ეს დღე უკვე დაკავებულია. აირჩიე სხვა თარიღი ან სხვა ქვეყანა.";
-    if (await db.Gifts.AnyAsync(g => g.Country == country.Id && g.Date == day, ct))
-        return Problem(http, takenText, StatusCodes.Status409Conflict);
+    const string changedText = "სანამ იხდიდი, ეს დღე სხვამ დაიკავა და ფასი შეიცვალა. ნახე ახალი ფასი.";
+    var held = await db.Gifts.FirstOrDefaultAsync(g => g.Country == country.Id && g.Date == day, ct);
 
-    var price = Pricing.Price(country, day);
+    // Free day: a plain gift. Held day: a coup against the sitting president, for 1.5x what they paid.
+    var price = held is null ? Pricing.Price(country, day) : Pricing.CoupPrice(held.Price);
+    if (req.Price != price) return Problem(http, changedText, StatusCodes.Status409Conflict);
+
     var payment = await payments.PayAsync(price, $"Presidents Map {country.Id} {day:yyyy-MM-dd}", ApprovedOrder(http), ct);
     if (payment.PendingOrderId is not null) return AwaitApproval(payment);
     if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
 
-    var gift = new Gift
-    {
-        Id = NewId(), Country = country.Id, Date = day, To = to, From = from, Message = message, Lang = Loc.Norm(req.Lang),
-        Price = price, PaymentRef = payment.Reference, CreatedAt = DateTime.UtcNow,
-    };
-    db.Gifts.Add(gift);
+    var gift = held ?? new Gift { Id = NewId(), Country = country.Id, Date = day };
+    if (held is null) db.Gifts.Add(gift); else gift.Coups++;
+    gift.To = to;
+    gift.From = from;
+    gift.Message = message;
+    gift.Lang = Loc.Norm(req.Lang);
+    gift.Price = price;
+    gift.TotalPaid += price;
+    gift.PaymentRef = payment.Reference;
+    gift.CreatedAt = DateTime.UtcNow;
     try
     {
         await db.SaveChangesAsync(ct);
     }
     catch (DbUpdateException)
     {
-        // Someone else took the same day between the check and the insert.
+        // Someone else got this day between the read and the write.
         await payments.RefundAsync(payment.Reference, ct);
-        return Problem(http, takenText, StatusCodes.Status409Conflict);
+        return Problem(http, changedText, StatusCodes.Status409Conflict);
     }
     return Results.Created($"/cert/{gift.Id}", GiftDto.Of(gift));
 }).RequireRateLimiting("buy");
@@ -118,7 +124,7 @@ app.MapPost("/api/gifts/{id}/cabinet", async (string id, AppointRequest req, Htt
     var seat = await db.Appointments.FirstOrDefaultAsync(a => a.GiftId == id && a.Post == post.Key, ct);
 
     // Empty seat: a plain appointment. Occupied seat: a coup, which always costs money.
-    var price = seat is null ? (g.CabinetPrepaid ? 0 : post.Price) : Cabinet.CoupPrice(seat.Worth);
+    var price = seat is null ? (g.CabinetPrepaid ? 0 : post.Price) : Pricing.CoupPrice(seat.Worth);
     if (req.Price != price) return Problem(http, changedText, StatusCodes.Status409Conflict);
 
     var reference = "prepaid";
@@ -230,7 +236,7 @@ static async Task<object> CabinetView(AppDb db, Gift g, string lang)
             return new
             {
                 key = p.Key, title = Loc.T(lang, p.Title), name = seat?.Name, coups = seat?.Coups ?? 0,
-                price = seat is null ? (g.CabinetPrepaid ? 0 : p.Price) : Cabinet.CoupPrice(seat.Worth),
+                price = seat is null ? (g.CabinetPrepaid ? 0 : p.Price) : Pricing.CoupPrice(seat.Worth),
             };
         }),
     };
@@ -247,9 +253,9 @@ static string NewId()
 
 record AppointRequest(string? Post, string? Name, int? Price);
 
-record GiftRequest(string? Country, string? Date, string? To, string? From, string? Message, string? Lang);
+record GiftRequest(string? Country, string? Date, string? To, string? From, string? Message, string? Lang, int? Price);
 
-record GiftDto(string Id, string Country, DateOnly Date, string To, string From, string Message, int Price, string Number)
+record GiftDto(string Id, string Country, DateOnly Date, string To, string From, string Message, int Price, string Number, int Coups)
 {
-    public static GiftDto Of(Gift g) => new(g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Price, g.Number);
+    public static GiftDto Of(Gift g) => new(g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Price, g.Number, g.Coups);
 }

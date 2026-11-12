@@ -54,6 +54,7 @@ public static class CertificatePage
             <div>{{E(T("მმართველობის დღე"))}}: {{E(date)}}</div>
             {{(g.Message.Length > 0 ? $"<div class=\"motto\">{(lang == "en" ? "“" : "„")}{E(g.Message)}{(lang == "en" ? "”" : "“")}</div>" : "")}}
             {{(g.From.Length > 0 ? $"<div>{E(giver)}</div>" : "")}}
+            {{(g.Coups > 0 ? $"<div class=\"no\">{E(T("გადატრიალება"))} №{g.Coups}</div>" : "")}}
             <div class="foot">{{E(T("სიმბოლური ტიტული. არ იძლევა არანაირ იურიდიულ ან პოლიტიკურ უფლებას."))}}</div>
           </div>
           <div class="row">
@@ -62,6 +63,7 @@ public static class CertificatePage
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text={{share}}%20{{u}}">WhatsApp</a>
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://t.me/share/url?url={{u}}&amp;text={{share}}">Telegram</a>
           </div>
+          <a class="btn coup" href="/?c={{E(g.Country)}}&amp;d={{g.Date:yyyy-MM-dd}}">{{E(T("წაართვი პრეზიდენტობა"))}} · ${{Pricing.CoupPrice(g.Price)}}</a>
           <section class="cabinet" id="cabinet" data-id="{{E(g.Id)}}" aria-live="polite"></section>
           <a class="btn ghost" href="/">{{E(T("აჩუქე შენც ქვეყანა"))}}</a>
         </main>

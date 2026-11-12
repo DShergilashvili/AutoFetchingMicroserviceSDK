@@ -13,7 +13,12 @@ public class Gift
     public string Message { get; set; } = "";
     /// <summary>Language the gift was bought in ("ka" or "en"); its certificate and share card use it.</summary>
     public string Lang { get; set; } = "ka";
+    /// <summary>What the current president's day cost; a coup costs 1.5x this.</summary>
     public int Price { get; set; }
+    /// <summary>How many times the presidency was taken from someone. Also guards against two coups at once.</summary>
+    public int Coups { get; set; }
+    /// <summary>Everything ever paid for this country-day, by every president.</summary>
+    public int TotalPaid { get; set; }
     public string PaymentRef { get; set; } = "";
     public DateTime CreatedAt { get; set; }
 
@@ -59,6 +64,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         g.Property(x => x.To).HasMaxLength(Limits.Name);
         g.Property(x => x.From).HasMaxLength(Limits.Name);
         g.Property(x => x.Message).HasMaxLength(Limits.Message);
+        g.Property(x => x.Coups).IsConcurrencyToken();
 
         var a = b.Entity<Appointment>();
         a.HasIndex(x => new { x.GiftId, x.Post }).IsUnique();   // one person per post

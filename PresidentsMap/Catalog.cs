@@ -37,6 +37,9 @@ public static class Pricing
     public static string? SpecialDay(DateOnly d) => Special.GetValueOrDefault((d.Month, d.Day));
     public static int Multiplier(DateOnly d) => SpecialDay(d) is null ? 1 : 2;
     public static int Price(Country c, DateOnly d) => c.BasePrice * Multiplier(d);
+
+    /// <summary>Taking something that is already held costs 50% more than the holder paid, and always at least $1 more.</summary>
+    public static int CoupPrice(int worth) => Math.Max(worth + 1, (int)Math.Ceiling(worth * 1.5));
 }
 
 public record CabinetPost(string Key, string Title, int Price);
@@ -57,9 +60,6 @@ public static class Cabinet
     ];
 
     public static CabinetPost? Find(string? key) => Posts.FirstOrDefault(p => p.Key == key);
-
-    /// <summary>Taking an occupied seat costs 50% more than it is worth, and always at least $1 more.</summary>
-    public static int CoupPrice(int worth) => Math.Max(worth + 1, (int)Math.Ceiling(worth * 1.5));
 
     /// <summary>All still-empty posts at once cost 30% less than one by one.</summary>
     public static int BundlePrice(IEnumerable<CabinetPost> empty) => (int)Math.Ceiling(empty.Sum(p => p.Price) * 0.7);
