@@ -11,6 +11,8 @@ public class Gift
     public string To { get; set; } = "";
     public string From { get; set; } = "";
     public string Message { get; set; } = "";
+    /// <summary>Language the gift was bought in ("ka" or "en"); its certificate and share card use it.</summary>
+    public string Lang { get; set; } = "ka";
     public int Price { get; set; }
     public string PaymentRef { get; set; } = "";
     public DateTime CreatedAt { get; set; }

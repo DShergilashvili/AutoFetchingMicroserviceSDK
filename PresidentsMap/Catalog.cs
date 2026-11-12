@@ -2,7 +2,10 @@ using System.Text.Json;
 
 namespace PresidentsMap;
 
-public record Country(string Id, string Name, int BasePrice);
+public record Country(string Id, string NameKa, string NameEn, int BasePrice)
+{
+    public string Name(string lang) => lang == "en" ? NameEn : NameKa;
+}
 
 /// <summary>Countries and base prices, read once from the same local file the map uses.</summary>
 public class CountryCatalog
@@ -14,7 +17,7 @@ public class CountryCatalog
         var path = Path.Combine(env.WebRootPath, "data", "countries.json");
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
         _byId = doc.RootElement.EnumerateArray()
-            .Select(e => new Country(e.GetProperty("id").GetString()!, e.GetProperty("n").GetString()!, e.GetProperty("p").GetInt32()))
+            .Select(e => new Country(e.GetProperty("id").GetString()!, e.GetProperty("n").GetString()!, e.GetProperty("e").GetString()!, e.GetProperty("p").GetInt32()))
             .ToDictionary(c => c.Id);
     }
 
@@ -60,15 +63,4 @@ public static class Cabinet
 
     /// <summary>All still-empty posts at once cost 30% less than one by one.</summary>
     public static int BundlePrice(IEnumerable<CabinetPost> empty) => (int)Math.Ceiling(empty.Sum(p => p.Price) * 0.7);
-}
-
-public static class Ka
-{
-    private static readonly string[] Months =
-    [
-        "იანვარი", "თებერვალი", "მარტი", "აპრილი", "მაისი", "ივნისი",
-        "ივლისი", "აგვისტო", "სექტემბერი", "ოქტომბერი", "ნოემბერი", "დეკემბერი",
-    ];
-
-    public static string Date(DateOnly d) => $"{d.Day} {Months[d.Month - 1]}, {d.Year}";
 }

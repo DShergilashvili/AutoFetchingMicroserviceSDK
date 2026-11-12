@@ -28,12 +28,12 @@ app.UseStaticFiles();
 app.UseRateLimiter();
 
 // Who holds which country on a given day, and what that day costs.
-app.MapGet("/api/days/{date}", async (string date, AppDb db) =>
+app.MapGet("/api/days/{date}", async (string date, HttpRequest http, AppDb db) =>
 {
     if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", out var day)) return Results.BadRequest();
     var gifts = await db.Gifts.Where(g => g.Date == day)
         .Select(g => new { country = g.Country, to = g.To, from = g.From }).ToListAsync();
-    return Results.Ok(new { date = day, special = Pricing.SpecialDay(day), multiplier = Pricing.Multiplier(day), gifts });
+    return Results.Ok(new { date = day, special = Pricing.SpecialDay(day) is { } name ? Loc.T(Loc.Of(http), name) : null, multiplier = Pricing.Multiplier(day), gifts });
 });
 
 app.MapGet("/api/summary", async (AppDb db) => Results.Ok(new
@@ -49,35 +49,35 @@ app.MapGet("/api/summary", async (AppDb db) => Results.Ok(new
 app.MapGet("/api/gifts/{id}", async (string id, AppDb db) =>
     await db.Gifts.FindAsync(id) is { } g ? Results.Ok(GiftDto.Of(g)) : Results.NotFound());
 
-app.MapPost("/api/gifts", async (GiftRequest req, AppDb db, CountryCatalog catalog, IPaymentGateway payments, CancellationToken ct) =>
+app.MapPost("/api/gifts", async (GiftRequest req, HttpRequest http, AppDb db, CountryCatalog catalog, IPaymentGateway payments, CancellationToken ct) =>
 {
     var country = catalog.Find(req.Country);
-    if (country is null) return Problem("ასეთი ქვეყანა რუკაზე არ არის.");
-    if (!DateOnly.TryParseExact(req.Date, "yyyy-MM-dd", out var day)) return Problem("თარიღი არასწორია.");
+    if (country is null) return Problem(http, "ასეთი ქვეყანა რუკაზე არ არის.");
+    if (!DateOnly.TryParseExact(req.Date, "yyyy-MM-dd", out var day)) return Problem(http, "თარიღი არასწორია.");
 
     // "Today" differs by up to 14 hours around the world; accept any date that is still today somewhere.
     var earliest = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-12));
-    if (day < earliest) return Problem("წარსული თარიღის ჩუქება არ შეიძლება.");
-    if (day > earliest.AddYears(5)) return Problem("თარიღი ძალიან შორსაა. აირჩიე უახლოესი 5 წლიდან.");
+    if (day < earliest) return Problem(http, "წარსული თარიღის ჩუქება არ შეიძლება.");
+    if (day > earliest.AddYears(5)) return Problem(http, "თარიღი ძალიან შორსაა. აირჩიე უახლოესი 5 წლიდან.");
 
     var to = (req.To ?? "").Trim();
     var from = (req.From ?? "").Trim();
     var message = (req.Message ?? "").Trim();
-    if (to.Length < 2 || to.Length > Limits.Name) return Problem("ჩაწერე, ვის ჩუქნი (2-დან 40 სიმბოლომდე).");
-    if (from.Length > Limits.Name) return Problem("შენი სახელი ძალიან გრძელია.");
-    if (message.Length > Limits.Message) return Problem("მილოცვა ძალიან გრძელია (მაქსიმუმ 140 სიმბოლო).");
+    if (to.Length < 2 || to.Length > Limits.Name) return Problem(http, "ჩაწერე, ვის ჩუქნი (2-დან 40 სიმბოლომდე).");
+    if (from.Length > Limits.Name) return Problem(http, "შენი სახელი ძალიან გრძელია.");
+    if (message.Length > Limits.Message) return Problem(http, "მილოცვა ძალიან გრძელია (მაქსიმუმ 140 სიმბოლო).");
 
     const string takenText = "ეს დღე უკვე დაკავებულია. აირჩიე სხვა თარიღი ან სხვა ქვეყანა.";
     if (await db.Gifts.AnyAsync(g => g.Country == country.Id && g.Date == day, ct))
-        return Problem(takenText, StatusCodes.Status409Conflict);
+        return Problem(http, takenText, StatusCodes.Status409Conflict);
 
     var price = Pricing.Price(country, day);
     var payment = await payments.ChargeAsync(price, $"{country.Id} {day:yyyy-MM-dd}", ct);
-    if (!payment.Ok) return Problem("გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
+    if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
 
     var gift = new Gift
     {
-        Id = NewId(), Country = country.Id, Date = day, To = to, From = from, Message = message,
+        Id = NewId(), Country = country.Id, Date = day, To = to, From = from, Message = message, Lang = Loc.Norm(req.Lang),
         Price = price, PaymentRef = payment.Reference, CreatedAt = DateTime.UtcNow,
     };
     db.Gifts.Add(gift);
@@ -89,36 +89,36 @@ app.MapPost("/api/gifts", async (GiftRequest req, AppDb db, CountryCatalog catal
     {
         // Someone else took the same day between the check and the insert.
         await payments.RefundAsync(payment.Reference, ct);
-        return Problem(takenText, StatusCodes.Status409Conflict);
+        return Problem(http, takenText, StatusCodes.Status409Conflict);
     }
     return Results.Created($"/cert/{gift.Id}", GiftDto.Of(gift));
 }).RequireRateLimiting("buy");
 
 // ---- cabinet: whoever has the certificate link can fill a post ----
 
-app.MapGet("/api/gifts/{id}/cabinet", async (string id, AppDb db) =>
-    await db.Gifts.FindAsync(id) is { } g ? Results.Ok(await CabinetView(db, g)) : Results.NotFound());
+app.MapGet("/api/gifts/{id}/cabinet", async (string id, HttpRequest http, AppDb db) =>
+    await db.Gifts.FindAsync(id) is { } g ? Results.Ok(await CabinetView(db, g, Loc.Of(http))) : Results.NotFound());
 
-app.MapPost("/api/gifts/{id}/cabinet", async (string id, AppointRequest req, AppDb db, IPaymentGateway payments, CancellationToken ct) =>
+app.MapPost("/api/gifts/{id}/cabinet", async (string id, AppointRequest req, HttpRequest http, AppDb db, IPaymentGateway payments, CancellationToken ct) =>
 {
     if (await db.Gifts.FindAsync([id], ct) is not { } g) return Results.NotFound();
     var post = Cabinet.Find(req.Post);
-    if (post is null) return Problem("ასეთი თანამდებობა არ არსებობს.");
+    if (post is null) return Problem(http, "ასეთი თანამდებობა არ არსებობს.");
     var name = (req.Name ?? "").Trim();
-    if (name.Length < 2 || name.Length > Limits.Name) return Problem("ჩაწერე სახელი (2-დან 40 სიმბოლომდე).");
+    if (name.Length < 2 || name.Length > Limits.Name) return Problem(http, "ჩაწერე სახელი (2-დან 40 სიმბოლომდე).");
 
     const string changedText = "სანამ იხდიდი, ეს სკამი სხვამ დაიკავა და ფასი შეიცვალა. ნახე ახალი ფასი.";
     var seat = await db.Appointments.FirstOrDefaultAsync(a => a.GiftId == id && a.Post == post.Key, ct);
 
     // Empty seat: a plain appointment. Occupied seat: a coup, which always costs money.
     var price = seat is null ? (g.CabinetPrepaid ? 0 : post.Price) : Cabinet.CoupPrice(seat.Worth);
-    if (req.Price != price) return Problem(changedText, StatusCodes.Status409Conflict);
+    if (req.Price != price) return Problem(http, changedText, StatusCodes.Status409Conflict);
 
     var reference = "prepaid";
     if (price > 0)
     {
         var payment = await payments.ChargeAsync(price, $"{g.Number} {post.Key}", ct);
-        if (!payment.Ok) return Problem("გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
+        if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
         reference = payment.Reference;
     }
 
@@ -148,49 +148,52 @@ app.MapPost("/api/gifts/{id}/cabinet", async (string id, AppointRequest req, App
     {
         // Someone else got the seat between the read and the write.
         if (price > 0) await payments.RefundAsync(reference, ct);
-        return Problem(changedText, StatusCodes.Status409Conflict);
+        return Problem(http, changedText, StatusCodes.Status409Conflict);
     }
-    return Results.Ok(await CabinetView(db, g));
+    return Results.Ok(await CabinetView(db, g, Loc.Of(http)));
 }).RequireRateLimiting("buy");
 
-app.MapPost("/api/gifts/{id}/cabinet/bundle", async (string id, AppDb db, IPaymentGateway payments, CancellationToken ct) =>
+app.MapPost("/api/gifts/{id}/cabinet/bundle", async (string id, HttpRequest http, AppDb db, IPaymentGateway payments, CancellationToken ct) =>
 {
     if (await db.Gifts.FindAsync([id], ct) is not { } g) return Results.NotFound();
-    if (g.CabinetPrepaid) return Problem("მთავრობა უკვე გადახდილია.", StatusCodes.Status409Conflict);
+    if (g.CabinetPrepaid) return Problem(http, "მთავრობა უკვე გადახდილია.", StatusCodes.Status409Conflict);
     var filled = await db.Appointments.Where(a => a.GiftId == id).Select(a => a.Post).ToListAsync(ct);
     var empty = Cabinet.Posts.Where(p => !filled.Contains(p.Key)).ToList();
-    if (empty.Count == 0) return Problem("ყველა თანამდებობა უკვე დაკავებულია.", StatusCodes.Status409Conflict);
+    if (empty.Count == 0) return Problem(http, "ყველა თანამდებობა უკვე დაკავებულია.", StatusCodes.Status409Conflict);
 
     var price = Cabinet.BundlePrice(empty);
     var payment = await payments.ChargeAsync(price, $"{g.Number} cabinet", ct);
-    if (!payment.Ok) return Problem("გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
+    if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
 
     g.CabinetPrepaid = true;
     g.CabinetPaid = price;
     await db.SaveChangesAsync(ct);
-    return Results.Ok(await CabinetView(db, g));
+    return Results.Ok(await CabinetView(db, g, Loc.Of(http)));
 }).RequireRateLimiting("buy");
 
-app.MapGet("/cert/{id}", async (string id, HttpRequest http, AppDb db, CountryCatalog catalog) =>
+// A certificate is shown in the language it was bought in; ?lang= overrides that.
+app.MapGet("/cert/{id}", async (string id, string? lang, HttpRequest http, AppDb db, CountryCatalog catalog) =>
 {
     if (await db.Gifts.FindAsync(id) is not { } g) return Results.NotFound();
-    var html = CertificatePage.Render(g, catalog.Find(g.Country)?.Name ?? g.Country, $"{http.Scheme}://{http.Host}");
+    var l = lang is null ? g.Lang : Loc.Norm(lang);
+    var html = CertificatePage.Render(g, catalog.Find(g.Country)?.Name(l) ?? g.Country, $"{http.Scheme}://{http.Host}", l);
     return Results.Content(html, "text/html; charset=utf-8");
 });
 
-app.MapGet("/cert/{id}/card.png", async (string id, HttpResponse res, AppDb db, CountryCatalog catalog, CardRenderer cards) =>
+app.MapGet("/cert/{id}/card.png", async (string id, string? lang, HttpResponse res, AppDb db, CountryCatalog catalog, CardRenderer cards) =>
 {
     if (await db.Gifts.FindAsync(id) is not { } g) return Results.NotFound();
+    var l = lang is null ? g.Lang : Loc.Norm(lang);
     res.Headers.CacheControl = "public, max-age=86400";
-    return Results.File(cards.Render(g, catalog.Find(g.Country)?.Name ?? g.Country), "image/png");
+    return Results.File(cards.Render(g, catalog.Find(g.Country)?.Name(l) ?? g.Country, l), "image/png");
 });
 
 app.Run();
 
-static IResult Problem(string text, int status = StatusCodes.Status400BadRequest) =>
-    Results.Json(new { error = text }, statusCode: status);
+static IResult Problem(HttpRequest http, string text, int status = StatusCodes.Status400BadRequest) =>
+    Results.Json(new { error = Loc.T(Loc.Of(http), text) }, statusCode: status);
 
-static async Task<object> CabinetView(AppDb db, Gift g)
+static async Task<object> CabinetView(AppDb db, Gift g, string lang)
 {
     var seats = await db.Appointments.Where(a => a.GiftId == g.Id).ToDictionaryAsync(a => a.Post);
     var empty = Cabinet.Posts.Where(p => !seats.ContainsKey(p.Key)).ToList();
@@ -205,7 +208,7 @@ static async Task<object> CabinetView(AppDb db, Gift g)
             var seat = seats.GetValueOrDefault(p.Key);
             return new
             {
-                key = p.Key, title = p.Title, name = seat?.Name, coups = seat?.Coups ?? 0,
+                key = p.Key, title = Loc.T(lang, p.Title), name = seat?.Name, coups = seat?.Coups ?? 0,
                 price = seat is null ? (g.CabinetPrepaid ? 0 : p.Price) : Cabinet.CoupPrice(seat.Worth),
             };
         }),
@@ -223,7 +226,7 @@ static string NewId()
 
 record AppointRequest(string? Post, string? Name, int? Price);
 
-record GiftRequest(string? Country, string? Date, string? To, string? From, string? Message);
+record GiftRequest(string? Country, string? Date, string? To, string? From, string? Message, string? Lang);
 
 record GiftDto(string Id, string Country, DateOnly Date, string To, string From, string Message, int Price, string Number)
 {
