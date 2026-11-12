@@ -9,13 +9,17 @@ builder.Services.AddDbContext<AppDb>(o =>
     o.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=presidents.db"));
 builder.Services.AddSingleton<CountryCatalog>();
 builder.Services.AddSingleton<CardRenderer>();
-builder.Services.AddSingleton<IPaymentGateway, DemoPaymentGateway>();
+// PayPal turns on when both keys are configured; without them every payment is a simulation.
+if (builder.Configuration["PayPal:ClientId"] is { Length: > 0 } && builder.Configuration["PayPal:Secret"] is { Length: > 0 })
+    builder.Services.AddHttpClient<IPaymentGateway, PayPalGateway>(c => c.Timeout = TimeSpan.FromSeconds(20));
+else
+    builder.Services.AddSingleton<IPaymentGateway, DemoPaymentGateway>();
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.AddPolicy("buy", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
 });
 
 var app = builder.Build();
@@ -26,6 +30,8 @@ using (var scope = app.Services.CreateScope())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRateLimiter();
+
+app.MapGet("/api/config", (IPaymentGateway payments) => Results.Ok(new { paypalClientId = payments.PublicClientId }));
 
 // Who holds which country on a given day, and what that day costs.
 app.MapGet("/api/days/{date}", async (string date, HttpRequest http, AppDb db) =>
@@ -72,7 +78,8 @@ app.MapPost("/api/gifts", async (GiftRequest req, HttpRequest http, AppDb db, Co
         return Problem(http, takenText, StatusCodes.Status409Conflict);
 
     var price = Pricing.Price(country, day);
-    var payment = await payments.ChargeAsync(price, $"{country.Id} {day:yyyy-MM-dd}", ct);
+    var payment = await payments.PayAsync(price, $"Presidents Map {country.Id} {day:yyyy-MM-dd}", ApprovedOrder(http), ct);
+    if (payment.PendingOrderId is not null) return AwaitApproval(payment);
     if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
 
     var gift = new Gift
@@ -117,7 +124,8 @@ app.MapPost("/api/gifts/{id}/cabinet", async (string id, AppointRequest req, Htt
     var reference = "prepaid";
     if (price > 0)
     {
-        var payment = await payments.ChargeAsync(price, $"{g.Number} {post.Key}", ct);
+        var payment = await payments.PayAsync(price, $"Presidents Map {g.Number} {post.Key}", ApprovedOrder(http), ct);
+        if (payment.PendingOrderId is not null) return AwaitApproval(payment);
         if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
         reference = payment.Reference;
     }
@@ -162,12 +170,19 @@ app.MapPost("/api/gifts/{id}/cabinet/bundle", async (string id, HttpRequest http
     if (empty.Count == 0) return Problem(http, "ყველა თანამდებობა უკვე დაკავებულია.", StatusCodes.Status409Conflict);
 
     var price = Cabinet.BundlePrice(empty);
-    var payment = await payments.ChargeAsync(price, $"{g.Number} cabinet", ct);
+    var payment = await payments.PayAsync(price, $"Presidents Map {g.Number} cabinet", ApprovedOrder(http), ct);
+    if (payment.PendingOrderId is not null) return AwaitApproval(payment);
     if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
 
-    g.CabinetPrepaid = true;
-    g.CabinetPaid = price;
-    await db.SaveChangesAsync(ct);
+    // Two people may pay for the same cabinet at once; only the first update wins, the other is refunded.
+    var won = await db.Gifts.Where(x => x.Id == id && !x.CabinetPrepaid)
+        .ExecuteUpdateAsync(u => u.SetProperty(x => x.CabinetPrepaid, true).SetProperty(x => x.CabinetPaid, price), ct);
+    if (won == 0)
+    {
+        await payments.RefundAsync(payment.Reference, ct);
+        return Problem(http, "მთავრობა უკვე გადახდილია.", StatusCodes.Status409Conflict);
+    }
+    await db.Entry(g).ReloadAsync(ct);
     return Results.Ok(await CabinetView(db, g, Loc.Of(http)));
 }).RequireRateLimiting("buy");
 
@@ -192,6 +207,12 @@ app.Run();
 
 static IResult Problem(HttpRequest http, string text, int status = StatusCodes.Status400BadRequest) =>
     Results.Json(new { error = Loc.T(Loc.Of(http), text) }, statusCode: status);
+
+// The buyer's browser sends the same purchase twice: first bare, then with the order it approved.
+static string? ApprovedOrder(HttpRequest http) => http.Headers["X-Payment-Order"].FirstOrDefault() is { Length: > 0 } id ? id : null;
+
+static IResult AwaitApproval(Payment payment) =>
+    Results.Json(new { paymentOrderId = payment.PendingOrderId }, statusCode: StatusCodes.Status202Accepted);
 
 static async Task<object> CabinetView(AppDb db, Gift g, string lang)
 {

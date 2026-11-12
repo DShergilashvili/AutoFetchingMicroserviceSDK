@@ -18,23 +18,31 @@
     for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
     return el;
   }
-  async function api(path, body) {
+  async function api(path, body, orderId) {
     const res = await fetch(path, body !== undefined
-      ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lang': lang }, body: JSON.stringify(body) }
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lang': lang, ...(orderId ? { 'X-Payment-Order': orderId } : {}) }, body: JSON.stringify(body) }
       : { headers: { 'X-Lang': lang } });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw { status: res.status, message: data && data.error };
+    if (res.status === 202) return { pending: data.paymentOrderId };   // buyer must approve the payment first
     return data;
   }
+  function done(view) { cab = view; open = null; name = ''; err = ''; busy = false; render(); }
+  async function failed(e) {
+    err = (e && e.message) || (e && e.status === 429 ? t('ძალიან ბევრი მცდელობაა. დაელოდე ერთი წუთი.') : t('ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.'));
+    if (e && e.status === 409) { try { cab = await api('/api/gifts/' + id + '/cabinet'); } catch (_) { } }
+    busy = false; render();
+  }
+  // Demo mode, or a seat that costs nothing: one request and it is done.
   async function send(path, body) {
     if (busy) return;
     busy = true; err = ''; render();
-    try { cab = await api(path, body); open = null; name = ''; }
-    catch (e) {
-      err = e.message || (e.status === 429 ? t('ძალიან ბევრი მცდელობაა. დაელოდე ერთი წუთი.') : t('ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.'));
-      if (e.status === 409) { try { cab = await api('/api/gifts/' + id + '/cabinet'); } catch (_) { } }
-    }
-    busy = false; render();
+    try { done(await api(path, body)); } catch (e) { await failed(e); }
+  }
+  // With a payment provider: its button sends the request, the buyer approves, the button sends it again.
+  function mountPay(path, body) {
+    const el = document.getElementById('pay-buttons');
+    if (el) Pay.mount(el, orderId => api(path, body(), orderId), done, failed);
   }
 
   function row(p) {
@@ -49,10 +57,11 @@
         onclick: () => { open = p.key; err = ''; name = ''; render(); document.getElementById('post-name')?.focus(); }
       }));
     return h('li', {}, head,
-      h('form', { onsubmit: e => { e.preventDefault(); send('/api/gifts/' + id + '/cabinet', { post: p.key, name, price: p.price }); } },
+      h('form', { onsubmit: e => { e.preventDefault(); if (Pay.enabled && p.price) return; send('/api/gifts/' + id + '/cabinet', { post: p.key, name, price: p.price }); } },
         h('input', { id: 'post-name', type: 'text', maxlength: '40', placeholder: taken ? t('ვინ იკავებს სკამს') : t('ვის ნიშნავ'), 'aria-label': t('სახელი'), value: name, oninput: e => { name = e.target.value; } }),
-        h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'submit', disabled: busy, text: busy ? t('ინახება…') : (p.price ? t('გადახდა ') + money(p.price) : t('დანიშვნა')) }),
+        Pay.enabled && p.price ? null : h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'submit', disabled: busy, text: busy ? t('ინახება…') : (p.price ? t('გადახდა ') + money(p.price) : t('დანიშვნა')) }),
         h('button', { class: 'btn ghost', type: 'button', disabled: busy, text: t('გაუქმება'), onclick: () => { open = null; err = ''; render(); } })),
+      Pay.enabled && p.price ? h('div', { id: 'pay-buttons', 'data-post': p.key, 'data-price': p.price }) : null,
       err ? h('p', { class: 'err', text: err }) : null);
   }
 
@@ -67,13 +76,21 @@
     if (!cab.prepaid && empty >= 2) kids.push(h('div', { class: 'bundle' },
       h('div', {}, h('strong', { text: t('სრული მთავრობა ერთად · ') + money(cab.bundlePrice) + ' ' }), h('s', { text: money(cab.fullPrice) }),
         h('div', { class: 'small', text: t('დარჩენილი ') + empty + t(' თანამდებობა 30%-ით იაფად. სახელებს მერე ჩაწერ.') })),
-      h('button', { class: 'btn', type: 'button', disabled: busy, text: t('ყიდვა ') + money(cab.bundlePrice), onclick: () => send('/api/gifts/' + id + '/cabinet/bundle', {}) })));
-    if (err && !open) kids.push(h('p', { class: 'err', text: err }));
+      open === '#bundle' && Pay.enabled ? h('div', { id: 'pay-buttons', 'data-post': '#bundle' })
+        : h('button', {
+          class: 'btn', type: 'button', disabled: busy, text: t('ყიდვა ') + money(cab.bundlePrice),
+          onclick: () => { if (Pay.enabled) { open = '#bundle'; err = ''; render(); } else send('/api/gifts/' + id + '/cabinet/bundle', {}); }
+        })));
+    if (err && (!open || open === '#bundle')) kids.push(h('p', { class: 'err', text: err }));
     kids.push(h('ul', { class: 'posts' }, cab.posts.map(row)));
-    kids.push(h('p', { class: 'small', text: t('დემო რეჟიმი: გადახდა სიმულაციაა, თანხა არ ჩამოგეჭრება.') }));
+    if (!Pay.enabled) kids.push(h('p', { class: 'small', text: t('დემო რეჟიმი: გადახდა სიმულაციაა, თანხა არ ჩამოგეჭრება.') }));
     root.replaceChildren(...kids);
+    const pb = document.getElementById('pay-buttons');
+    if (pb && pb.dataset.post === '#bundle') mountPay('/api/gifts/' + id + '/cabinet/bundle', () => ({}));
+    else if (pb) mountPay('/api/gifts/' + id + '/cabinet', () => ({ post: pb.dataset.post, name, price: Number(pb.dataset.price) }));
   }
 
   render();
+  Pay.ready.then(render);
   api('/api/gifts/' + id + '/cabinet').then(c => { cab = c; render(); }, () => { err = t('მთავრობა ვერ ჩაიტვირთა. გადატვირთე გვერდი.'); render(); });
 })();

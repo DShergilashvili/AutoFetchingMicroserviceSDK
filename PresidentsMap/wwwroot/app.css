@@ -121,3 +121,4 @@ a.btn{text-decoration:none;display:inline-block}
 .posts .btn.take{color:var(--danger);border-color:var(--danger)}
 .langlink{align-self:flex-end;color:var(--muted);font-size:13px}
 #lang{font-size:13px;padding:6px 12px;align-self:flex-start}
+#pay-buttons{width:100%;min-height:44px}

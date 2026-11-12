@@ -66,6 +66,7 @@ public static class CertificatePage
           <a class="btn ghost" href="/">{{E(T("აჩუქე შენც ქვეყანა"))}}</a>
         </main>
         <script src="/i18n.js"></script>
+        <script src="/pay.js"></script>
         <script src="/cert.js"></script>
         </body>
         </html>

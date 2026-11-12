@@ -21,12 +21,13 @@ const save = () => { try { localStorage.setItem(LS, JSON.stringify({ mine, from:
 const cur = () => selected + '_' + date;
 const priceOf = id => byId[id].p * day.multiplier;
 
-async function api(path, body) {
+async function api(path, body, orderId) {
   const res = await fetch(path, body
-    ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lang': lang }, body: JSON.stringify(body) }
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lang': lang, ...(orderId ? { 'X-Payment-Order': orderId } : {}) }, body: JSON.stringify(body) }
     : { headers: { 'X-Lang': lang } });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw { status: res.status, message: data && data.error };
+  if (res.status === 202) return { pending: data.paymentOrderId };   // buyer must approve the payment first
   return data;
 }
 
@@ -106,18 +107,30 @@ function startPay() {
   if (draft.to.trim().length < 2) { err = t('ჩაწერე, ვის ჩუქნი (მინიმუმ 2 სიმბოლო).'); return render(); }
   err = ''; quoted = priceOf(selected); stage = 'confirm'; save(); render();
 }
-async function pay() {
-  const key = cur();
-  stage = 'saving'; render();
-  try {
-    const g = await api('/api/gifts', { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang });
-    certs[g.id] = g; mine[key] = g.id; save();
-    draft.to = ''; draft.msg = '';
-  } catch (e) {
-    err = e.message || (e.status === 429 ? t('ძალიან ბევრი მცდელობაა. დაელოდე ერთი წუთი და სცადე თავიდან.') : t('საჩუქარი ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.'));
-  }
+// The purchase request. Sent once in demo mode; with a payment provider it is sent twice,
+// the second time carrying the order the buyer approved.
+function giftAttempt() {
+  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang };
+  return {
+    key,
+    send: orderId => api('/api/gifts', body, orderId),
+  };
+}
+async function giftDone(key, g) {
+  certs[g.id] = g; mine[key] = g.id; save();
+  draft.to = ''; draft.msg = '';
   stage = 'idle';
   await Promise.all([loadDay(), loadSummary()]);
+}
+async function giftFailed(e) {
+  err = (e && e.message) || (e && e.status === 429 ? t('ძალიან ბევრი მცდელობაა. დაელოდე ერთი წუთი და სცადე თავიდან.') : t('საჩუქარი ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.'));
+  stage = 'idle';
+  await Promise.all([loadDay(), loadSummary()]);
+}
+async function pay() {
+  const a = giftAttempt();
+  stage = 'saving'; render();
+  try { await giftDone(a.key, await a.send(null)); } catch (e) { await giftFailed(e); }
 }
 
 /* ---------- render ---------- */
@@ -212,12 +225,13 @@ function renderPanel() {
     kids.push(h('div', { class: 'pay' },
       h('div', { text: t('გადასახდელი თანხა') }), h('strong', { text: money(quoted) }),
       h('div', { text: draft.to.trim() + ' · ' + c.n + ' · ' + fmt(date) }),
-      h('p', { class: 'small', text: t('ეს დემო გადახდაა. ბარათი არ გჭირდება და თანხა არ ჩამოგეჭრება.') }),
+      Pay.enabled ? h('div', { id: 'pay-buttons' }) : h('p', { class: 'small', text: t('ეს დემო გადახდაა. ბარათი არ გჭირდება და თანხა არ ჩამოგეჭრება.') }),
       h('div', { class: 'row' },
-        h('button', { class: 'btn', type: 'button', disabled: stage === 'saving', onclick: pay, text: stage === 'saving' ? t('ინახება…') : t('გადახდის დადასტურება') }),
+        Pay.enabled ? null : h('button', { class: 'btn', type: 'button', disabled: stage === 'saving', onclick: pay, text: stage === 'saving' ? t('ინახება…') : t('გადახდის დადასტურება') }),
         h('button', { class: 'btn ghost', type: 'button', disabled: stage === 'saving', onclick: () => { stage = 'idle'; render(); }, text: t('გაუქმება') }))));
   }
   $('dossier').replaceChildren(...kids.flat().filter(Boolean));
+  if ($('pay-buttons')) { const a = giftAttempt(); Pay.mount($('pay-buttons'), a.send, g => giftDone(a.key, g), giftFailed); }
 }
 
 /* ---------- start ---------- */
@@ -233,4 +247,5 @@ function renderPanel() {
   }
   render();
   loadDay(); loadSummary();
+  Pay.ready.then(() => { $('mode').hidden = Pay.enabled; panelKey = ''; render(); });
 })();
