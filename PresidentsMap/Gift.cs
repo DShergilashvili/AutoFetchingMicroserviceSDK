@@ -15,12 +15,36 @@ public class Gift
     public string PaymentRef { get; set; } = "";
     public DateTime CreatedAt { get; set; }
 
+    /// <summary>Set when the whole cabinet was bought at once; remaining posts are then filled for free.</summary>
+    public bool CabinetPrepaid { get; set; }
+    public int CabinetPaid { get; set; }
+
     public string Number => $"{Country}-{Date:yyyyMMdd}";
+}
+
+/// <summary>A prime minister or minister in the cabinet of one gifted country-day.</summary>
+public class Appointment
+{
+    public int Id { get; set; }
+    public string GiftId { get; set; } = "";
+    public string Post { get; set; } = "";
+    public string Name { get; set; } = "";
+    /// <summary>What the current holder paid (0 when the seat came from a prepaid cabinet).</summary>
+    public int Price { get; set; }
+    /// <summary>What the seat is valued at; the next coup costs 1.5x this.</summary>
+    public int Worth { get; set; }
+    /// <summary>How many times the seat was taken from someone. Also guards against two coups at once.</summary>
+    public int Coups { get; set; }
+    /// <summary>Everything ever paid for this seat, by every holder.</summary>
+    public int TotalPaid { get; set; }
+    public string PaymentRef { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
 }
 
 public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
 {
     public DbSet<Gift> Gifts => Set<Gift>();
+    public DbSet<Appointment> Appointments => Set<Appointment>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -33,6 +57,12 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         g.Property(x => x.To).HasMaxLength(Limits.Name);
         g.Property(x => x.From).HasMaxLength(Limits.Name);
         g.Property(x => x.Message).HasMaxLength(Limits.Message);
+
+        var a = b.Entity<Appointment>();
+        a.HasIndex(x => new { x.GiftId, x.Post }).IsUnique();   // one person per post
+        a.HasOne<Gift>().WithMany().HasForeignKey(x => x.GiftId);
+        a.Property(x => x.Name).HasMaxLength(Limits.Name);
+        a.Property(x => x.Coups).IsConcurrencyToken();
     }
 }
 

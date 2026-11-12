@@ -174,7 +174,7 @@ function certificate(c, g) {
     g.message ? h('div', { class: 'motto', text: '„' + g.message + '“' }) : null,
     g.from ? h('div', { text: 'გამჩუქებელი: ' + g.from }) : null,
     h('div', { class: 'foot', text: 'სიმბოლური ტიტული. არ იძლევა არანაირ იურიდიულ ან პოლიტიკურ უფლებას.' })),
-  h('a', { class: 'btn', href: '/cert/' + g.id, target: '_blank', rel: 'noopener', text: 'სერტიფიკატის გვერდის გახსნა' }),
+  h('a', { class: 'btn', href: '/cert/' + g.id, target: '_blank', rel: 'noopener', text: 'სერტიფიკატი და მთავრობის დანიშვნა' }),
   h('div', { class: 'share' }, h('div', { class: 'small', text: 'გაუგზავნე ბმული ან გააზიარე' }), h('div', { class: 'row' },
     ...shareLinks(msg, url).map(([n, u]) => h('a', { class: 'btn ghost', href: u, target: '_blank', rel: 'noopener noreferrer', text: n })),
     copyBtn))];

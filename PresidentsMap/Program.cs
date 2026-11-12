@@ -39,7 +39,8 @@ app.MapGet("/api/days/{date}", async (string date, AppDb db) =>
 app.MapGet("/api/summary", async (AppDb db) => Results.Ok(new
 {
     count = await db.Gifts.CountAsync(),
-    total = await db.Gifts.SumAsync(g => (int?)g.Price) ?? 0,
+    total = (await db.Gifts.SumAsync(g => (int?)(g.Price + g.CabinetPaid)) ?? 0)
+          + (await db.Appointments.SumAsync(a => (int?)a.TotalPaid) ?? 0),
     recent = await db.Gifts.OrderByDescending(g => g.CreatedAt).Take(8)
         .Select(g => new { country = g.Country, date = g.Date, to = g.To, price = g.Price }).ToListAsync(),
 }));
@@ -93,6 +94,83 @@ app.MapPost("/api/gifts", async (GiftRequest req, AppDb db, CountryCatalog catal
     return Results.Created($"/cert/{gift.Id}", GiftDto.Of(gift));
 }).RequireRateLimiting("buy");
 
+// ---- cabinet: whoever has the certificate link can fill a post ----
+
+app.MapGet("/api/gifts/{id}/cabinet", async (string id, AppDb db) =>
+    await db.Gifts.FindAsync(id) is { } g ? Results.Ok(await CabinetView(db, g)) : Results.NotFound());
+
+app.MapPost("/api/gifts/{id}/cabinet", async (string id, AppointRequest req, AppDb db, IPaymentGateway payments, CancellationToken ct) =>
+{
+    if (await db.Gifts.FindAsync([id], ct) is not { } g) return Results.NotFound();
+    var post = Cabinet.Find(req.Post);
+    if (post is null) return Problem("ასეთი თანამდებობა არ არსებობს.");
+    var name = (req.Name ?? "").Trim();
+    if (name.Length < 2 || name.Length > Limits.Name) return Problem("ჩაწერე სახელი (2-დან 40 სიმბოლომდე).");
+
+    const string changedText = "სანამ იხდიდი, ეს სკამი სხვამ დაიკავა და ფასი შეიცვალა. ნახე ახალი ფასი.";
+    var seat = await db.Appointments.FirstOrDefaultAsync(a => a.GiftId == id && a.Post == post.Key, ct);
+
+    // Empty seat: a plain appointment. Occupied seat: a coup, which always costs money.
+    var price = seat is null ? (g.CabinetPrepaid ? 0 : post.Price) : Cabinet.CoupPrice(seat.Worth);
+    if (req.Price != price) return Problem(changedText, StatusCodes.Status409Conflict);
+
+    var reference = "prepaid";
+    if (price > 0)
+    {
+        var payment = await payments.ChargeAsync(price, $"{g.Number} {post.Key}", ct);
+        if (!payment.Ok) return Problem("გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
+        reference = payment.Reference;
+    }
+
+    if (seat is null)
+    {
+        db.Appointments.Add(new Appointment
+        {
+            GiftId = id, Post = post.Key, Name = name, Price = price, Worth = post.Price, TotalPaid = price,
+            PaymentRef = reference, CreatedAt = DateTime.UtcNow,
+        });
+    }
+    else
+    {
+        seat.Name = name;
+        seat.Price = price;
+        seat.Worth = price;
+        seat.TotalPaid += price;
+        seat.Coups++;
+        seat.PaymentRef = reference;
+        seat.CreatedAt = DateTime.UtcNow;
+    }
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateException)
+    {
+        // Someone else got the seat between the read and the write.
+        if (price > 0) await payments.RefundAsync(reference, ct);
+        return Problem(changedText, StatusCodes.Status409Conflict);
+    }
+    return Results.Ok(await CabinetView(db, g));
+}).RequireRateLimiting("buy");
+
+app.MapPost("/api/gifts/{id}/cabinet/bundle", async (string id, AppDb db, IPaymentGateway payments, CancellationToken ct) =>
+{
+    if (await db.Gifts.FindAsync([id], ct) is not { } g) return Results.NotFound();
+    if (g.CabinetPrepaid) return Problem("მთავრობა უკვე გადახდილია.", StatusCodes.Status409Conflict);
+    var filled = await db.Appointments.Where(a => a.GiftId == id).Select(a => a.Post).ToListAsync(ct);
+    var empty = Cabinet.Posts.Where(p => !filled.Contains(p.Key)).ToList();
+    if (empty.Count == 0) return Problem("ყველა თანამდებობა უკვე დაკავებულია.", StatusCodes.Status409Conflict);
+
+    var price = Cabinet.BundlePrice(empty);
+    var payment = await payments.ChargeAsync(price, $"{g.Number} cabinet", ct);
+    if (!payment.Ok) return Problem("გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
+
+    g.CabinetPrepaid = true;
+    g.CabinetPaid = price;
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(await CabinetView(db, g));
+}).RequireRateLimiting("buy");
+
 app.MapGet("/cert/{id}", async (string id, HttpRequest http, AppDb db, CountryCatalog catalog) =>
 {
     if (await db.Gifts.FindAsync(id) is not { } g) return Results.NotFound();
@@ -112,6 +190,28 @@ app.Run();
 static IResult Problem(string text, int status = StatusCodes.Status400BadRequest) =>
     Results.Json(new { error = text }, statusCode: status);
 
+static async Task<object> CabinetView(AppDb db, Gift g)
+{
+    var seats = await db.Appointments.Where(a => a.GiftId == g.Id).ToDictionaryAsync(a => a.Post);
+    var empty = Cabinet.Posts.Where(p => !seats.ContainsKey(p.Key)).ToList();
+    return new
+    {
+        prepaid = g.CabinetPrepaid,
+        bundlePrice = Cabinet.BundlePrice(empty),
+        fullPrice = empty.Sum(p => p.Price),
+        // price = what the next action on this seat costs: appointing if empty, a coup if occupied.
+        posts = Cabinet.Posts.Select(p =>
+        {
+            var seat = seats.GetValueOrDefault(p.Key);
+            return new
+            {
+                key = p.Key, title = p.Title, name = seat?.Name, coups = seat?.Coups ?? 0,
+                price = seat is null ? (g.CabinetPrepaid ? 0 : p.Price) : Cabinet.CoupPrice(seat.Worth),
+            };
+        }),
+    };
+}
+
 static string NewId()
 {
     const string alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -120,6 +220,8 @@ static string NewId()
         for (var i = 0; i < span.Length; i++) span[i] = alphabet[RandomNumberGenerator.GetInt32(alphabet.Length)];
     });
 }
+
+record AppointRequest(string? Post, string? Name, int? Price);
 
 record GiftRequest(string? Country, string? Date, string? To, string? From, string? Message);
 

@@ -51,8 +51,10 @@ public static class CertificatePage
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text={{share}}%20{{u}}">WhatsApp</a>
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://t.me/share/url?url={{u}}&amp;text={{share}}">Telegram</a>
           </div>
-          <a class="btn" href="/">აჩუქე შენც ქვეყანა</a>
+          <section class="cabinet" id="cabinet" data-id="{{E(g.Id)}}" aria-live="polite"></section>
+          <a class="btn ghost" href="/">აჩუქე შენც ქვეყანა</a>
         </main>
+        <script src="/cert.js"></script>
         </body>
         </html>
         """;
