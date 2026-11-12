@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>პრეზიდენტების რუკა</title>
+<meta name="description" content="აჩუქე ქვეყანა ერთი დღით: სიმბოლური პრეზიდენტის სერტიფიკატი საყვარელი ადამიანისთვის.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700&family=Noto+Serif+Georgian:wght@600;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>პრეზიდენტების რუკა</h1>
+      <p>აჩუქე ქვეყანა ერთი დღით. აირჩიე ქვეყანა და თარიღი, ჩაწერე ვის ჩუქნი, და იმ დღეს ის ამ ქვეყნის სიმბოლური პრეზიდენტია. თითო ქვეყანა თითო დღეს მხოლოდ ერთ ადამიანს ეკუთვნის.</p>
+    </div>
+    <dl class="stats">
+      <div><dt>გაჩუქებული დღეები</dt><dd id="st-taken">0</dd></div>
+      <div><dt>ხაზინა</dt><dd id="st-sum">$0</dd></div>
+    </dl>
+  </header>
+
+  <div class="mode" id="mode"><b>დემო რეჟიმი.</b> გადახდა სიმულაციაა, რეალური თანხა არ იხდება.</div>
+
+  <div class="bar">
+    <label for="date">საჩუქრის დღე <input id="date" type="date"></label>
+    <span id="date-note"></span>
+  </div>
+
+  <div class="desk">
+    <div class="mapbox">
+      <svg id="map" viewBox="0 0 1000 500" role="img" aria-label="მსოფლიო რუკა"></svg>
+      <button class="reset" id="reset" type="button" hidden>მთელი რუკა</button>
+      <div class="legend"><span><i></i>თავისუფალი ამ დღეს</span><span><i class="t"></i>დაკავებული</span><span><i class="m"></i>შენი საჩუქარი</span></div>
+    </div>
+    <aside class="dossier" id="dossier" aria-live="polite"></aside>
+  </div>
+
+  <div class="ledgers">
+    <section class="ledger">
+      <h2>ბოლო საჩუქრები</h2>
+      <ol class="board" id="board" hidden></ol>
+      <p class="empty" id="board-empty">ჯერ არავის არაფერი უჩუქებია. პირველი საჩუქრის შემდეგ აქ გამოჩნდება სია.</p>
+    </section>
+    <section class="ledger">
+      <h2>ყველა ქვეყანა</h2>
+      <input class="search" id="search" type="search" placeholder="მოძებნე ქვეყანა" aria-label="ქვეყნის ძებნა">
+      <div class="list" id="list"></div>
+    </section>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
