@@ -1,0 +1,25 @@
+# Run:  docker compose up -d --build     then open http://localhost:8080
+# Settings come from a .env file next to this one (copy .env.example). All are optional:
+# with none set the site runs in demo mode.
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - data:/data            # the database lives here and survives rebuilds
+    environment:
+      Site__Url: ${SITE_URL:-}
+      Admin__Key: ${ADMIN_KEY:-}
+      PayPal__ClientId: ${PAYPAL_CLIENT_ID:-}
+      PayPal__Secret: ${PAYPAL_SECRET:-}
+      PayPal__Sandbox: ${PAYPAL_SANDBOX:-true}
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__From: ${SMTP_FROM:-}
+
+volumes:
+  data:
