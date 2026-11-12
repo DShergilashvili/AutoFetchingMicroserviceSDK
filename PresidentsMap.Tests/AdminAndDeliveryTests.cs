@@ -25,6 +25,20 @@ public class AdminAndDeliveryTests(SiteFactory site) : IClassFixture<SiteFactory
     }
 
     [Fact]
+    public async Task Status_reports_what_is_switched_on_and_a_test_email_goes_out()
+    {
+        var status = System.Text.Json.JsonDocument.Parse(await (await AdminAsync(HttpMethod.Get, "/status", SiteFactory.AdminKey)).Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal("demo", status.GetProperty("payments").GetString());
+        Assert.True(status.GetProperty("email").GetBoolean());
+        Assert.Equal("https://example.test", status.GetProperty("siteUrl").GetString());
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/admin/test-email") { Content = System.Net.Http.Json.JsonContent.Create(new { to = "owner@example.com" }) };
+        req.Headers.Add("X-Admin-Key", SiteFactory.AdminKey);
+        Assert.Equal(HttpStatusCode.NoContent, (await _http.SendAsync(req)).StatusCode);
+        Assert.Contains(site.Sent, m => m.To == "owner@example.com" && m.Subject.Contains("test"));
+    }
+
+    [Fact]
     public async Task Removing_a_gift_frees_the_day_again()
     {
         var (_, gift) = await _http.PostAsync("/api/gifts", new { country = "TR", date = Day(200), to = "Offensive", price = 20 });

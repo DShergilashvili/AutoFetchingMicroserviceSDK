@@ -15,6 +15,14 @@
     <button class="btn" type="submit">შესვლა</button>
   </form>
   <p class="err" id="msg" hidden></p>
+  <section id="panel" hidden>
+    <dl class="facts" id="status"></dl>
+    <form id="mailtest" class="row" style="margin-top:12px">
+      <input id="mailto" type="email" class="search" style="max-width:320px" placeholder="შენი ელფოსტა" aria-label="სატესტო წერილის მისამართი">
+      <button class="btn ghost" type="submit">სატესტო წერილის გაგზავნა</button>
+    </form>
+    <p class="small" id="mailmsg"></p>
+  </section>
   <p class="small" id="hint">ბოლო 200 საჩუქარი. წაშლა ათავისუფლებს დღეს ან სკამს; თანხა ავტომატურად არ ბრუნდება, საჭიროების შემთხვევაში დააბრუნე გადახდის სისტემიდან.</p>
   <div class="scroll"><table id="table" hidden>
     <thead><tr><th>ქვეყანა, დღე</th><th>მმართველი</th><th>გამჩუქებელი, მილოცვა</th><th>ელფოსტები</th><th>შემოსავალი</th><th>მთავრობა</th><th></th></tr></thead>
@@ -30,9 +38,9 @@ function h(tag, props, ...kids) {
   for (const kid of kids.flat()) if (kid != null) el.append(kid);
   return el;
 }
-async function call(method, path) {
-  const res = await fetch('/api/admin' + path, { method, headers: { 'X-Admin-Key': key } });
-  if (!res.ok) throw res.status;
+async function call(method, path, body) {
+  const res = await fetch('/api/admin' + path, { method, headers: { 'X-Admin-Key': key, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) { const data = await res.json().catch(() => null); throw data && data.error ? data.error : res.status; }
   return res.status === 204 ? null : res.json();
 }
 // A destructive button asks once more before it acts.
@@ -48,7 +56,15 @@ async function load() {
   let gifts;
   try { gifts = await call('GET', '/gifts'); }
   catch (e) { $('table').hidden = true; return say(e === 401 ? 'გასაღები არასწორია.' : e === 404 ? 'ადმინის გასაღები სერვერზე არ არის მითითებული (Admin__Key).' : 'ვერ ჩაიტვირთა (კოდი ' + e + ').'); }
-  say(''); $('table').hidden = false;
+  say(''); $('table').hidden = false; $('panel').hidden = false;
+  try {
+    const s = await call('GET', '/status');
+    const pay = { demo: 'დემო: თანხა არ იჭრება', 'paypal-sandbox': 'PayPal, სატესტო რეჟიმი', 'paypal-live': 'PayPal, რეალური ფული' }[s.payments];
+    $('status').replaceChildren(
+      h('dt', { text: 'გადახდა' }), h('dd', { text: pay }),
+      h('dt', { text: 'წერილები' }), h('dd', { text: s.email ? 'იგზავნება ფოსტის სერვერით' : 'გამორთულია: მხოლოდ ლოგში იწერება' }),
+      h('dt', { text: 'საიტის მისამართი' }), h('dd', { text: s.siteUrl || 'არ არის მითითებული (SITE_URL)' }));
+  } catch (e) { }
   $('rows').replaceChildren(...gifts.map(g => h('tr', {},
     h('td', {}, h('a', { href: '/cert/' + g.id, target: '_blank', rel: 'noopener', text: g.country + ' ' + g.date })),
     h('td', { text: g.to + ' (' + g.title + ')' + (g.coups ? ' · გადატრ. ' + g.coups : '') + (g.immune ? ' · იმუნიტეტი' : '') }),
@@ -58,6 +74,11 @@ async function load() {
     h('td', {}, g.seats.map(a => h('div', {}, (a.customTitle || a.post) + ': ' + a.name + ' ', danger('×', () => call('DELETE', '/seats/' + a.id))))),
     h('td', {}, danger('საჩუქრის წაშლა', () => call('DELETE', '/gifts/' + g.id))))));
 }
+$('mailtest').addEventListener('submit', async e => {
+  e.preventDefault(); $('mailmsg').textContent = 'იგზავნება…';
+  try { await call('POST', '/test-email', { to: $('mailto').value }); $('mailmsg').textContent = 'გაიგზავნა. შეამოწმე საფოსტო ყუთი (სპამის საქაღალდეც).'; }
+  catch (x) { $('mailmsg').textContent = 'ვერ გაიგზავნა: ' + x; }
+});
 $('login').addEventListener('submit', e => { e.preventDefault(); key = $('key').value; load(); });
 </script>
 </body>

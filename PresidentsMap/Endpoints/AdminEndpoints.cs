@@ -10,6 +10,8 @@ namespace PresidentsMap.Endpoints;
 /// </summary>
 public static class AdminEndpoints
 {
+    private record TestEmailRequest(string? To);
+
     public static void MapAdmin(this WebApplication app)
     {
         var admin = app.MapGroup("/api/admin").AddEndpointFilter(async (ctx, next) =>
@@ -19,6 +21,30 @@ public static class AdminEndpoints
             var given = ctx.HttpContext.Request.Headers["X-Admin-Key"].FirstOrDefault() ?? "";
             var same = CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(given), Encoding.UTF8.GetBytes(expected));
             return same ? await next(ctx) : Results.Unauthorized();
+        });
+
+        // What is switched on, so the owner can see at a glance whether the site takes real money and sends real mail.
+        admin.MapGet("/status", (IConfiguration config, IPaymentGateway payments, IEmailSender sender) => Results.Ok(new
+        {
+            payments = payments is not PayPalGateway ? "demo" : config.GetValue("PayPal:Sandbox", true) ? "paypal-sandbox" : "paypal-live",
+            email = sender is not LogEmailSender,
+            siteUrl = config["Site:Url"] ?? "",
+        }));
+
+        // Sends one message right now and reports the mail server's answer, to check the mail settings.
+        admin.MapPost("/test-email", async (TestEmailRequest req, IEmailSender sender, CancellationToken ct) =>
+        {
+            if (sender is LogEmailSender) return Results.Json(new { error = "ფოსტის სერვერი არ არის მითითებული (SMTP_HOST)." }, statusCode: StatusCodes.Status409Conflict);
+            if (!Api.TryEmail(req.To, out var to) || to.Length == 0) return Results.Json(new { error = "ელფოსტის მისამართი არასწორია." }, statusCode: StatusCodes.Status400BadRequest);
+            try
+            {
+                await sender.SendAsync(new Email(to, "Presidents Map: test", "ეს სატესტო წერილია. ფოსტის პარამეტრები მუშაობს.\n\nThis is a test message. The mail settings work."), ct);
+                return Results.NoContent();
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status502BadGateway);
+            }
         });
 
         admin.MapGet("/gifts", async (AppDb db) =>

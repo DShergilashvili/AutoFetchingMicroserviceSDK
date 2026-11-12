@@ -1,4 +1,5 @@
-# Run:  docker compose up -d --build     then open http://localhost:8080
+# On your own computer:   docker compose up -d --build                    then open http://localhost:8080
+# On a server with a domain: docker compose --profile https up -d --build  (set DOMAIN in .env; HTTPS is automatic)
 # Settings come from a .env file next to this one (copy .env.example). All are optional:
 # with none set the site runs in demo mode.
 services:
@@ -21,5 +22,20 @@ services:
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__From: ${SMTP_FROM:-}
 
+  # Public entrance with automatic HTTPS certificates. Starts only with:  --profile https
+  https:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to web:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy:/data           # issued certificates
+    depends_on:
+      - web
+
 volumes:
   data:
+  caddy:
