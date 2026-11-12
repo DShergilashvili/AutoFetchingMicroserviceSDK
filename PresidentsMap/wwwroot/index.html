@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>პრეზიდენტების რუკა</title>
+<meta property="og:title" content="Presidents Map">
+<meta property="og:description" content="Gift a country for a day. Make someone you love its honorary president.">
 <meta name="description" content="აჩუქე ქვეყანა ერთი დღით: სიმბოლური პრეზიდენტის სერტიფიკატი საყვარელი ადამიანისთვის.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700&family=Noto+Serif+Georgian:wght@600;700&display=swap">
 <link rel="stylesheet" href="/app.css">
@@ -43,6 +45,10 @@
       <h2>ბოლო საჩუქრები</h2>
       <ol class="board" id="board" hidden></ol>
       <p class="empty" id="board-empty">ჯერ არავის არაფერი უჩუქებია. პირველი საჩუქრის შემდეგ აქ გამოჩნდება სია.</p>
+      <div id="contested-box" hidden>
+        <h2>ყველაზე ხშირად ჩამოგდებული</h2>
+        <ol class="board" id="contested"></ol>
+      </div>
     </section>
     <section class="ledger">
       <h2>ყველა ქვეყანა</h2>
@@ -52,6 +58,7 @@
   </div>
 </div>
 
+<footer class="legal"><a href="/legal.html#terms">წესები</a><a href="/legal.html#privacy">კონფიდენციალურობა</a><a href="/legal.html#refunds">თანხის დაბრუნება</a></footer>
 <script src="/i18n.js"></script>
 <script src="/pay.js"></script>
 <script src="/app.js"></script>

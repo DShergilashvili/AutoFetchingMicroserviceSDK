@@ -9,15 +9,18 @@ const LS = 'presidents-map';
 let MAP = [], byId = {}, paths = {};
 let selected = 'GE', date = todayISO();
 let day = { multiplier: 1, special: null, gifts: {} };   // gifts: country code -> {to, from}
-let summary = { count: 0, total: 0, recent: [] };
+let summary = { count: 0, total: 0, recent: [], contested: [] };
 let mine = {};        // "GE_2027-02-14" -> {id, coups}: gifts bought in this browser, valid until someone stages a coup
 let certs = {};       // certificate id -> full gift
 let stage = 'idle', quoted = 0, err = '', loadErr = '', panelKey = '';
-const draft = { to: '', from: '', msg: '', immune: false };
+const draft = { to: '', from: '', msg: '', immune: false, title: 'president', email: '', toEmail: '' };
+const TITLES = { president: 'პრეზიდენტი', king: 'მეფე', queen: 'დედოფალი', emperor: 'იმპერატორი', empress: 'იმპერატრიცა' };
+let titlePrice = 10;
+const titleFee = () => draft.title === 'president' ? 0 : titlePrice;
 const immunityOf = price => Math.max(5, Math.ceil(price * 0.5));   // same rule as the server
 
-try { const s = JSON.parse(localStorage.getItem(LS) || '{}'); mine = s.mine || {}; draft.from = s.from || ''; } catch (e) { }
-const save = () => { try { localStorage.setItem(LS, JSON.stringify({ mine, from: draft.from })); } catch (e) { } };
+try { const s = JSON.parse(localStorage.getItem(LS) || '{}'); mine = s.mine || {}; draft.from = s.from || ''; draft.email = s.email || ''; } catch (e) { }
+const save = () => { try { localStorage.setItem(LS, JSON.stringify({ mine, from: draft.from, email: draft.email })); } catch (e) { } };
 
 const cur = () => selected + '_' + date;
 const priceOf = id => day.gifts[id] ? day.gifts[id].coupPrice : byId[id].p * day.multiplier;
@@ -109,12 +112,12 @@ dateEl.addEventListener('change', () => {
 function startPay() {
   if (draft.to.trim().length < 2) { err = t('ჩაწერე, ვის ჩუქნი (მინიმუმ 2 სიმბოლო).'); return render(); }
   const base = priceOf(selected);
-  err = ''; quoted = base + (draft.immune ? immunityOf(base) : 0); stage = 'confirm'; save(); render();
+  err = ''; quoted = base + (draft.immune ? immunityOf(base) : 0) + titleFee(); stage = 'confirm'; save(); render();
 }
 // The purchase request. Sent once in demo mode; with a payment provider it is sent twice,
 // the second time carrying the order the buyer approved.
 function giftAttempt() {
-  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang, price: quoted, immune: draft.immune };
+  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang, price: quoted, immune: draft.immune, title: draft.title, email: draft.email, recipientEmail: draft.toEmail };
   return {
     key,
     send: orderId => api('/api/gifts', body, orderId),
@@ -122,7 +125,7 @@ function giftAttempt() {
 }
 async function giftDone(key, g) {
   certs[g.id] = g; mine[key] = { id: g.id, coups: g.coups }; save();
-  draft.to = ''; draft.msg = ''; draft.immune = false;
+  draft.to = ''; draft.msg = ''; draft.immune = false; draft.title = 'president'; draft.toEmail = '';
   stage = 'idle';
   await Promise.all([loadDay(), loadSummary()]);
 }
@@ -157,6 +160,12 @@ function renderBoard() {
     h('span', { class: 'rk', text: i + 1 }),
     h('span', { class: 'nm' }, x.to + (mineId(x.country, x.date, x.coups) ? t(' (შენი საჩუქარი)') : ''), h('span', { text: byId[x.country].n + ' · ' + fmt(x.date) })),
     h('span', { class: 'pr', text: money(x.price) }))));
+  const hot = (summary.contested || []).filter(x => byId[x.country]);
+  $('contested-box').hidden = !hot.length;
+  $('contested').replaceChildren(...hot.map((x, i) => h('li', { onclick: () => select(x.country, true, x.date) },
+    h('span', { class: 'rk', text: i + 1 }),
+    h('span', { class: 'nm' }, byId[x.country].n + ' · ' + fmt(x.date), h('span', { text: x.to + t(' · გადატრიალება №') + x.coups })),
+    h('span', { class: 'pr', text: money(x.price) }))));
 }
 function renderList() {
   const q = $('search').value.trim().toLowerCase();
@@ -184,9 +193,10 @@ function certificate(c, g) {
   });
   const msg = t('საჩუქარი: ') + g.to + t(' ერთი დღით პრეზიდენტია. ქვეყანა: ') + c.n + t(', დღე: ') + fmt(g.date) + '.';
   return [h('div', { class: 'cert' },
-    h('div', { class: 'k', text: t('საპატიო პრეზიდენტის სერტიფიკატი') }),
+    h('div', { class: 'k', text: g.title && g.title !== 'president' ? t('საპატიო ტიტულის სერტიფიკატი') : t('საპატიო პრეზიდენტის სერტიფიკატი') }),
     h('div', { class: 'no', text: '№ ' + g.number }),
     h('div', { class: 'who', text: g.to }),
+    g.title && g.title !== 'president' ? h('div', { class: 'land', text: t('ტიტული: ') + t(TITLES[g.title]) }) : null,
     h('div', { class: 'land', text: t('ქვეყანა: ') + c.n }),
     h('div', { text: t('მმართველობის დღე: ') + fmt(g.date) }),
     g.message ? h('div', { class: 'motto', text: (lang === 'en' ? '“' : '„') + g.message + (lang === 'en' ? '”' : '“') }) : null,
@@ -212,12 +222,12 @@ function renderPanel() {
     else { kids.push(h('p', { class: 'small', text: t('სერტიფიკატი იტვირთება…') })); loadCert(certId); }
   } else if (taken && taken.immune) {
     kids.push(h('dl', { class: 'facts' },
-      h('dt', { text: t('პრეზიდენტი ამ დღეს') }), h('dd', { text: taken.to }),
+      h('dt', { text: t(TITLES[taken.title] || TITLES.president) + t(' ამ დღეს') }), h('dd', { text: taken.to }),
       taken.from ? [h('dt', { text: t('გამჩუქებელი') }), h('dd', { text: taken.from })] : null),
       h('p', { class: 'small', text: t('ეს პრეზიდენტი გადატრიალებისგან დაცულია. აირჩიე სხვა თარიღი ან სხვა ქვეყანა.') }));
   } else if (stage === 'idle') {
     if (taken) kids.push(h('dl', { class: 'facts' },
-      h('dt', { text: t('პრეზიდენტი ამ დღეს') }), h('dd', { text: taken.to + (taken.coups ? t(' · გადატრიალება №') + taken.coups : '') }),
+      h('dt', { text: t(TITLES[taken.title] || TITLES.president) + t(' ამ დღეს') }), h('dd', { text: taken.to + (taken.coups ? t(' · გადატრიალება №') + taken.coups : '') }),
       taken.from ? [h('dt', { text: t('გამჩუქებელი') }), h('dd', { text: taken.from })] : null),
       h('p', { class: 'small', text: t('პრეზიდენტის ჩამოგდება შეიძლება: გადატრიალება 50%-ით მეტი ღირს, ვიდრე მან გადაიხადა.') }));
     kids.push(
@@ -227,11 +237,18 @@ function renderPanel() {
         h('input', { id: 'f-from', type: 'text', maxlength: '40', autocomplete: 'name', value: draft.from, oninput: e => { draft.from = e.target.value; } })),
       h('label', { class: 'field' }, t('მილოცვა სერტიფიკატზე (არასავალდებულო)'),
         h('textarea', { id: 'f-msg', maxlength: '140', oninput: e => { draft.msg = e.target.value; } }, draft.msg)),
+      h('label', { class: 'field' }, t('ტიტული'),
+        h('select', { id: 'f-title', onchange: e => { draft.title = e.target.value; panelKey = ''; render(); } },
+          Object.keys(TITLES).map(k => h('option', { value: k, selected: draft.title === k, text: t(TITLES[k]) + (k === 'president' ? '' : ' +' + money(titlePrice)) })))),
+      h('label', { class: 'field' }, t('შენი ელფოსტა: ქვითარი და შეტყობინება, თუ ჩამოაგდებენ (არასავალდებულო)'),
+        h('input', { id: 'f-email', type: 'email', maxlength: '254', autocomplete: 'email', value: draft.email, oninput: e => { draft.email = e.target.value; } })),
+      h('label', { class: 'field' }, t('მიმღების ელფოსტა: სერტიფიკატი მიუვა საჩუქრის დღეს (არასავალდებულო)'),
+        h('input', { id: 'f-to-email', type: 'email', maxlength: '254', value: draft.toEmail, oninput: e => { draft.toEmail = e.target.value; } })),
       h('label', { class: 'check' },
         h('input', { id: 'f-immune', type: 'checkbox', checked: draft.immune, onchange: e => { draft.immune = e.target.checked; panelKey = ''; render(); } }),
         h('span', {}, t('იმუნიტეტი: ვერავინ ჩამოაგდებს'), h('b', { text: ' +' + money(immunityOf(price)) }))),
       err ? h('p', { class: 'err', text: err }) : null,
-      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price + (draft.immune ? immunityOf(price) : 0)) }),
+      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price + (draft.immune ? immunityOf(price) : 0) + titleFee()) }),
       taken ? null : h('p', { class: 'small', text: t('ფასი ქვეყნის ფართობზეა დამოკიდებული. სადღესასწაულო დღეებში (ვალენტინობა, 8 მარტი, ახალი წელი) ორმაგია.') }));
   } else {
     kids.push(h('div', { class: 'pay' },
@@ -264,6 +281,6 @@ function renderPanel() {
   render();
   if (q.get('c')) zoomCountry(selected);
   loadDay(); loadSummary();
-  Pay.ready.then(() => { $('mode').hidden = Pay.enabled; panelKey = ''; render(); });
+  Pay.ready.then(() => { $('mode').hidden = Pay.enabled; titlePrice = Pay.titlePrice; panelKey = ''; render(); });
   for (const k in mine) if (typeof mine[k] === 'string') mine[k] = { id: mine[k], coups: 0 };   // older saved format
 })();

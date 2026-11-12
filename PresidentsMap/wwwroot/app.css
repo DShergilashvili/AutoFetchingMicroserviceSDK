@@ -126,3 +126,24 @@ a.btn{text-decoration:none;display:inline-block}
 .check input{margin-top:3px;width:16px;height:16px;flex:none}
 #immunity{border-color:var(--taken)}
 #pay-immunity{min-width:160px}
+.field select{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;color:var(--ink);font:inherit;font-size:15px;width:100%}
+#contested-box{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.legal{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:13px;margin-top:8px}
+.legal a{color:var(--muted)}
+.doc{max-width:68ch;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-block:24px}
+.doc h2{margin-top:18px}
+.doc p,.doc li{margin:0;line-height:1.6}
+.doc ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.doc .note{border-left:3px solid var(--mine);padding-left:10px;color:var(--muted);font-size:13px}
+html[lang="en"] [data-l="ka"],html[lang="ka"] [data-l="en"]{display:none}
+.admin{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-block:24px}
+.admin table{border-collapse:collapse;width:100%;font-size:13px}
+.admin td,.admin th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.admin .scroll{overflow-x:auto}
+@media print{
+  body{background:#fff;padding:0}
+  .certpage>*:not(.cert){display:none!important}
+  .certpage{max-width:none;padding:12mm}
+  .cert{background:#fff;color:#000;border-color:#8a7a3c;outline-color:#8a7a3c;padding:18mm 12mm;gap:5mm}
+  .cert .who{font-size:34pt} .cert .land{font-size:20pt} .cert .k{font-size:11pt} .cert div{font-size:13pt} .cert .foot,.cert .no{font-size:9pt}
+}

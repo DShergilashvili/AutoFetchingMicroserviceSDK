@@ -5,7 +5,7 @@
   const id = root.dataset.id;
   const money = n => '$' + n;
   const { t, lang } = I18N;
-  let cab = null, open = null, busy = false, err = '', name = '';
+  let cab = null, open = null, busy = false, err = '', name = '', custom = '';
 
   function h(tag, props, ...kids) {
     const el = document.createElement(tag);
@@ -27,7 +27,7 @@
     if (res.status === 202) return { pending: data.paymentOrderId };   // buyer must approve the payment first
     return data;
   }
-  function done(view) { cab = view; open = null; name = ''; err = ''; busy = false; render(); }
+  function done(view) { cab = view; open = null; name = ''; custom = ''; err = ''; busy = false; render(); }
   async function failed(e) {
     err = (e && e.message) || (e && e.status === 429 ? t('ძალიან ბევრი მცდელობაა. დაელოდე ერთი წუთი.') : t('ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.'));
     if (e && e.status === 409) { try { cab = await api('/api/gifts/' + id + '/cabinet'); } catch (_) { } }
@@ -65,6 +65,24 @@
       err ? h('p', { class: 'err', text: err }) : null);
   }
 
+  // A ministry the visitor invents: its own title, always paid.
+  function customRow() {
+    const price = cab.customPrice;
+    if (open !== 'custom') return h('li', {},
+      h('div', { class: 't' }, h('span', { text: t('შენი საკუთარი სამინისტრო') }), h('small', { text: t('მოიფიქრე სახელი, მაგალითად „პიცის მინისტრი“') })),
+      h('button', { class: 'btn ghost', type: 'button', disabled: busy, text: t('დაამატე · ') + money(price), onclick: () => { open = 'custom'; err = ''; name = ''; custom = ''; render(); document.getElementById('post-title')?.focus(); } }));
+    const body = () => ({ post: 'custom', title: custom, name, price });
+    return h('li', {},
+      h('div', { class: 't' }, h('span', { text: t('შენი საკუთარი სამინისტრო') })),
+      h('form', { onsubmit: e => { e.preventDefault(); if (Pay.enabled) return; send('/api/gifts/' + id + '/cabinet', body()); } },
+        h('input', { id: 'post-title', type: 'text', maxlength: '30', placeholder: t('სამინისტროს სახელი'), 'aria-label': t('სამინისტროს სახელი'), value: custom, oninput: e => { custom = e.target.value; } }),
+        h('input', { id: 'post-name', type: 'text', maxlength: '40', placeholder: t('ვის ნიშნავ'), 'aria-label': t('სახელი'), value: name, oninput: e => { name = e.target.value; } }),
+        Pay.enabled ? null : h('button', { class: 'btn', type: 'submit', disabled: busy, text: busy ? t('ინახება…') : t('გადახდა ') + money(price) }),
+        h('button', { class: 'btn ghost', type: 'button', disabled: busy, text: t('გაუქმება'), onclick: () => { open = null; err = ''; render(); } })),
+      Pay.enabled ? h('div', { id: 'pay-buttons', 'data-post': 'custom', 'data-price': price }) : null,
+      err ? h('p', { class: 'err', text: err }) : null);
+  }
+
   function render() {
     if (!cab) { root.replaceChildren(h('p', { class: 'small', text: err || t('მთავრობა იტვირთება…') })); return; }
     const empty = cab.posts.filter(p => !p.name).length;
@@ -82,12 +100,12 @@
           onclick: () => { if (Pay.enabled) { open = '#bundle'; err = ''; render(); } else send('/api/gifts/' + id + '/cabinet/bundle', {}); }
         })));
     if (err && (!open || open === '#bundle')) kids.push(h('p', { class: 'err', text: err }));
-    kids.push(h('ul', { class: 'posts' }, cab.posts.map(row)));
+    kids.push(h('ul', { class: 'posts' }, cab.posts.map(row), cab.customLeft > 0 ? customRow() : null));
     if (!Pay.enabled) kids.push(h('p', { class: 'small', text: t('დემო რეჟიმი: გადახდა სიმულაციაა, თანხა არ ჩამოგეჭრება.') }));
     root.replaceChildren(...kids);
     const pb = document.getElementById('pay-buttons');
     if (pb && pb.dataset.post === '#bundle') mountPay('/api/gifts/' + id + '/cabinet/bundle', () => ({}));
-    else if (pb) mountPay('/api/gifts/' + id + '/cabinet', () => ({ post: pb.dataset.post, name, price: Number(pb.dataset.price) }));
+    else if (pb) mountPay('/api/gifts/' + id + '/cabinet', () => ({ post: pb.dataset.post, name, title: custom, price: Number(pb.dataset.price) }));
   }
 
   // Immunity box (rendered by the server only while the president is unprotected).

@@ -45,6 +45,25 @@ public static class Pricing
     public static int CoupPrice(int worth) => Math.Max(worth + 1, (int)Math.Ceiling(worth * 1.5));
 }
 
+public static class Titles
+{
+    public const string Default = "president";
+    public const int UpgradePrice = 10;
+
+    private static readonly Dictionary<string, string> Names = new()
+    {
+        ["president"] = "პრეზიდენტი",
+        ["king"] = "მეფე",
+        ["queen"] = "დედოფალი",
+        ["emperor"] = "იმპერატორი",
+        ["empress"] = "იმპერატრიცა",
+    };
+
+    public static bool Exists(string? key) => key is not null && Names.ContainsKey(key);
+    public static string Name(string key, string lang) => Loc.T(lang, Names.GetValueOrDefault(key, Names[Default]));
+    public static int Price(string key) => key == Default ? 0 : UpgradePrice;
+}
+
 public record CabinetPost(string Key, string Title, int Price);
 
 public static class Cabinet
@@ -61,6 +80,10 @@ public static class Cabinet
         new("rest", "დასვენების მინისტრი", 1),
         new("fun", "გართობის მინისტრი", 1),
     ];
+
+    public const int CustomPrice = 3;
+    public const int CustomLimit = 5;
+    public const string CustomPrefix = "custom-";
 
     public static CabinetPost? Find(string? key) => Posts.FirstOrDefault(p => p.Key == key);
 

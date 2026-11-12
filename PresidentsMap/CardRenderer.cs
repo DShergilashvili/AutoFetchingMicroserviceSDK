@@ -31,10 +31,10 @@ public sealed class CardRenderer
         string T(string ka) => Loc.T(lang, ka);
         var ink = new SKColor(0x22, 0x20, 0x1A);
         var soft = new SKColor(0x6A, 0x63, 0x50);
-        Line(c, T("საპატიო პრეზიდენტის სერტიფიკატი"), _sans, 30, 128, soft);
+        Line(c, T(g.Title == Titles.Default ? "საპატიო პრეზიდენტის სერტიფიკატი" : "საპატიო ტიტულის სერტიფიკატი"), _sans, 30, 128, soft);
         Line(c, "№ " + g.Number, _sans, 24, 172, soft);
         Line(c, g.To, _serif, 92, 300, ink);
-        Line(c, T("ქვეყანა") + ": " + countryName, _serif, 50, 390, ink);
+        Line(c, (g.Title == Titles.Default ? "" : Titles.Name(g.Title, lang) + " · ") + T("ქვეყანა") + ": " + countryName, _serif, 50, 390, ink);
         Line(c, T("მმართველობის დღე") + ": " + Loc.Date(lang, g.Date), _sans, 34, 456, ink);
         if (g.From.Length > 0) Line(c, T("გამჩუქებელი") + (lang == "en" ? " " : ": ") + g.From, _sans, 30, 514, soft);
         Line(c, T("სიმბოლური ტიტული · პრეზიდენტების რუკა"), _sans, 20, 566, soft);

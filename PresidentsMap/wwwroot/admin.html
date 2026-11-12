@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ადმინი · პრეზიდენტების რუკა</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="admin">
+  <h1>ადმინი</h1>
+  <form id="login" class="row">
+    <input id="key" type="password" class="search" style="max-width:320px" placeholder="ადმინის გასაღები" aria-label="ადმინის გასაღები" autocomplete="current-password">
+    <button class="btn" type="submit">შესვლა</button>
+  </form>
+  <p class="err" id="msg" hidden></p>
+  <p class="small" id="hint">ბოლო 200 საჩუქარი. წაშლა ათავისუფლებს დღეს ან სკამს; თანხა ავტომატურად არ ბრუნდება, საჭიროების შემთხვევაში დააბრუნე გადახდის სისტემიდან.</p>
+  <div class="scroll"><table id="table" hidden>
+    <thead><tr><th>ქვეყანა, დღე</th><th>მმართველი</th><th>გამჩუქებელი, მილოცვა</th><th>ელფოსტები</th><th>შემოსავალი</th><th>მთავრობა</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let key = '';
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const k in props || {}) { if (k === 'text') el.textContent = props[k]; else if (k.startsWith('on')) el.addEventListener(k.slice(2), props[k]); else el.setAttribute(k, props[k]); }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid);
+  return el;
+}
+async function call(method, path) {
+  const res = await fetch('/api/admin' + path, { method, headers: { 'X-Admin-Key': key } });
+  if (!res.ok) throw res.status;
+  return res.status === 204 ? null : res.json();
+}
+// A destructive button asks once more before it acts.
+function danger(label, action) {
+  const b = h('button', { class: 'btn ghost', type: 'button', text: label, onclick: async () => {
+    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'დარწმუნებული ხარ?'; b.classList.add('take'); return; }
+    b.disabled = true; try { await action(); await load(); } catch (e) { say('ვერ შესრულდა (კოდი ' + e + ').'); }
+  } });
+  return b;
+}
+function say(text) { $('msg').textContent = text; $('msg').hidden = !text; }
+async function load() {
+  let gifts;
+  try { gifts = await call('GET', '/gifts'); }
+  catch (e) { $('table').hidden = true; return say(e === 401 ? 'გასაღები არასწორია.' : e === 404 ? 'ადმინის გასაღები სერვერზე არ არის მითითებული (Admin__Key).' : 'ვერ ჩაიტვირთა (კოდი ' + e + ').'); }
+  say(''); $('table').hidden = false;
+  $('rows').replaceChildren(...gifts.map(g => h('tr', {},
+    h('td', {}, h('a', { href: '/cert/' + g.id, target: '_blank', rel: 'noopener', text: g.country + ' ' + g.date })),
+    h('td', { text: g.to + ' (' + g.title + ')' + (g.coups ? ' · გადატრ. ' + g.coups : '') + (g.immune ? ' · იმუნიტეტი' : '') }),
+    h('td', {}, g.from || '—', h('br'), g.message || '', g.message ? danger('მილოცვის წაშლა', () => call('POST', '/gifts/' + g.id + '/clear-message')) : null),
+    h('td', {}, g.buyerEmail || '—', h('br'), g.recipientEmail || ''),
+    h('td', { text: '$' + (g.totalPaid + g.cabinetPaid + g.seats.reduce((s, a) => s + a.totalPaid, 0)) }),
+    h('td', {}, g.seats.map(a => h('div', {}, (a.customTitle || a.post) + ': ' + a.name + ' ', danger('×', () => call('DELETE', '/seats/' + a.id))))),
+    h('td', {}, danger('საჩუქრის წაშლა', () => call('DELETE', '/gifts/' + g.id))))));
+}
+$('login').addEventListener('submit', e => { e.preventDefault(); key = $('key').value; load(); });
+</script>
+</body>
+</html>

@@ -18,7 +18,9 @@ public static class CertificatePage
         var date = Loc.Date(lang, g.Date);
         var giver = T("გამჩუქებელი") + (lang == "en" ? " " : ": ") + g.From;
 
-        var title = $"{g.To} · {T("საპატიო პრეზიდენტი")}";
+        var royal = g.Title != Titles.Default;
+        var heading = royal ? T("საპატიო ტიტულის სერტიფიკატი") : T("საპატიო პრეზიდენტის სერტიფიკატი");
+        var title = $"{g.To} · {(royal ? Titles.Name(g.Title, lang) : T("საპატიო პრეზიდენტი"))}";
         var desc = $"{T("ქვეყანა")}: {countryName}. {T("მმართველობის დღე")}: {date}.";
         var share = Uri.EscapeDataString(string.Format(T("საჩუქარი: {0} ერთი დღით პრეზიდენტია. ქვეყანა: {1}, დღე: {2}."), g.To, countryName, date));
         var u = Uri.EscapeDataString(url);
@@ -47,9 +49,10 @@ public static class CertificatePage
         <main class="certpage">
           <a class="langlink" href="/cert/{{E(g.Id)}}?lang={{other}}">{{(other == "en" ? "English" : "ქართული")}}</a>
           <div class="cert">
-            <div class="k">{{E(T("საპატიო პრეზიდენტის სერტიფიკატი"))}}</div>
+            <div class="k">{{E(heading)}}</div>
             <div class="no">№ {{E(g.Number)}}</div>
             <div class="who">{{E(g.To)}}</div>
+            {{(royal ? $"<div class=\"land\">{E(T("ტიტული"))}: {E(Titles.Name(g.Title, lang))}</div>" : "")}}
             <div class="land">{{E(T("ქვეყანა"))}}: {{E(countryName)}}</div>
             <div>{{E(T("მმართველობის დღე"))}}: {{E(date)}}</div>
             {{(g.Message.Length > 0 ? $"<div class=\"motto\">{(lang == "en" ? "“" : "„")}{E(g.Message)}{(lang == "en" ? "”" : "“")}</div>" : "")}}
@@ -59,6 +62,7 @@ public static class CertificatePage
             <div class="foot">{{E(T("სიმბოლური ტიტული. არ იძლევა არანაირ იურიდიულ ან პოლიტიკურ უფლებას."))}}</div>
           </div>
           <div class="row">
+            <button class="btn ghost" type="button" onclick="window.print()">{{E(T("სერტიფიკატის ბეჭდვა"))}}</button>
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://www.facebook.com/sharer/sharer.php?u={{u}}">Facebook</a>
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://twitter.com/intent/tweet?text={{share}}&amp;url={{u}}">X</a>
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text={{share}}%20{{u}}">WhatsApp</a>
@@ -67,6 +71,7 @@ public static class CertificatePage
           {{(g.Immune ? "" : $"<div class=\"bundle\" id=\"immunity\" data-price=\"{Pricing.ImmunityPrice(g.Price)}\"><div><strong>{E(T("იმუნიტეტი"))} · ${Pricing.ImmunityPrice(g.Price)}</strong><div class=\"small\">{E(T("დაიცავი პრეზიდენტი: ამ დღეს მას ვეღარავინ ჩამოაგდებს."))}</div></div><span id=\"immunity-act\"></span></div><a class=\"btn coup\" href=\"/?c={E(g.Country)}&amp;d={g.Date:yyyy-MM-dd}\">{E(T("წაართვი პრეზიდენტობა"))} · ${Pricing.CoupPrice(g.Price)}</a>")}}
           <section class="cabinet" id="cabinet" data-id="{{E(g.Id)}}" aria-live="polite"></section>
           <a class="btn ghost" href="/">{{E(T("აჩუქე შენც ქვეყანა"))}}</a>
+          <footer class="legal"><a href="/legal.html#terms">{{E(T("წესები"))}}</a><a href="/legal.html#privacy">{{E(T("კონფიდენციალურობა"))}}</a><a href="/legal.html#refunds">{{E(T("თანხის დაბრუნება"))}}</a></footer>
         </main>
         <script src="/i18n.js"></script>
         <script src="/pay.js"></script>
