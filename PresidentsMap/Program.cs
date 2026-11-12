@@ -38,7 +38,7 @@ app.MapGet("/api/days/{date}", async (string date, HttpRequest http, AppDb db) =
 {
     if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", out var day)) return Results.BadRequest();
     var gifts = (await db.Gifts.Where(g => g.Date == day).ToListAsync())
-        .Select(g => new { country = g.Country, to = g.To, from = g.From, coups = g.Coups, coupPrice = Pricing.CoupPrice(g.Price) });
+        .Select(g => new { country = g.Country, to = g.To, from = g.From, coups = g.Coups, coupPrice = Pricing.CoupPrice(g.Price), immune = g.Immune });
     return Results.Ok(new { date = day, special = Pricing.SpecialDay(day) is { } name ? Loc.T(Loc.Of(http), name) : null, multiplier = Pricing.Multiplier(day), gifts });
 });
 
@@ -77,10 +77,13 @@ app.MapPost("/api/gifts", async (GiftRequest req, HttpRequest http, AppDb db, Co
     var held = await db.Gifts.FirstOrDefaultAsync(g => g.Country == country.Id && g.Date == day, ct);
 
     // Free day: a plain gift. Held day: a coup against the sitting president, for 1.5x what they paid.
+    if (held is { Immune: true }) return Problem(http, "ეს პრეზიდენტი გადატრიალებისგან დაცულია.", StatusCodes.Status409Conflict);
     var price = held is null ? Pricing.Price(country, day) : Pricing.CoupPrice(held.Price);
-    if (req.Price != price) return Problem(http, changedText, StatusCodes.Status409Conflict);
+    var immune = req.Immune == true;
+    var total = price + (immune ? Pricing.ImmunityPrice(price) : 0);
+    if (req.Price != total) return Problem(http, changedText, StatusCodes.Status409Conflict);
 
-    var payment = await payments.PayAsync(price, $"Presidents Map {country.Id} {day:yyyy-MM-dd}", ApprovedOrder(http), ct);
+    var payment = await payments.PayAsync(total, $"Presidents Map {country.Id} {day:yyyy-MM-dd}", ApprovedOrder(http), ct);
     if (payment.PendingOrderId is not null) return AwaitApproval(payment);
     if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
 
@@ -91,7 +94,8 @@ app.MapPost("/api/gifts", async (GiftRequest req, HttpRequest http, AppDb db, Co
     gift.Message = message;
     gift.Lang = Loc.Norm(req.Lang);
     gift.Price = price;
-    gift.TotalPaid += price;
+    gift.Immune = immune;
+    gift.TotalPaid += total;
     gift.PaymentRef = payment.Reference;
     gift.CreatedAt = DateTime.UtcNow;
     try
@@ -105,6 +109,32 @@ app.MapPost("/api/gifts", async (GiftRequest req, HttpRequest http, AppDb db, Co
         return Problem(http, changedText, StatusCodes.Status409Conflict);
     }
     return Results.Created($"/cert/{gift.Id}", GiftDto.Of(gift));
+}).RequireRateLimiting("buy");
+
+// Immunity bought later, from the certificate page.
+app.MapPost("/api/gifts/{id}/immunity", async (string id, ImmunityRequest req, HttpRequest http, AppDb db, IPaymentGateway payments, CancellationToken ct) =>
+{
+    if (await db.Gifts.FindAsync([id], ct) is not { } g) return Results.NotFound();
+    if (g.Immune) return Problem(http, "ეს პრეზიდენტი უკვე დაცულია.", StatusCodes.Status409Conflict);
+    const string changedText = "სანამ იხდიდი, პრეზიდენტი შეიცვალა. გადატვირთე გვერდი.";
+    var price = Pricing.ImmunityPrice(g.Price);
+    if (req.Price != price) return Problem(http, changedText, StatusCodes.Status409Conflict);
+
+    var payment = await payments.PayAsync(price, $"Presidents Map {g.Number} immunity", ApprovedOrder(http), ct);
+    if (payment.PendingOrderId is not null) return AwaitApproval(payment);
+    if (!payment.Ok) return Problem(http, "გადახდა ვერ შესრულდა.", StatusCodes.Status402PaymentRequired);
+
+    // Only protect the president the buyer saw: a coup in between must not inherit the shield.
+    var coups = g.Coups;
+    var won = await db.Gifts.Where(x => x.Id == id && !x.Immune && x.Coups == coups)
+        .ExecuteUpdateAsync(u => u.SetProperty(x => x.Immune, true).SetProperty(x => x.TotalPaid, x => x.TotalPaid + price), ct);
+    if (won == 0)
+    {
+        await payments.RefundAsync(payment.Reference, ct);
+        return Problem(http, changedText, StatusCodes.Status409Conflict);
+    }
+    await db.Entry(g).ReloadAsync(ct);
+    return Results.Ok(GiftDto.Of(g));
 }).RequireRateLimiting("buy");
 
 // ---- cabinet: whoever has the certificate link can fill a post ----
@@ -253,9 +283,11 @@ static string NewId()
 
 record AppointRequest(string? Post, string? Name, int? Price);
 
-record GiftRequest(string? Country, string? Date, string? To, string? From, string? Message, string? Lang, int? Price);
+record GiftRequest(string? Country, string? Date, string? To, string? From, string? Message, string? Lang, int? Price, bool? Immune);
 
-record GiftDto(string Id, string Country, DateOnly Date, string To, string From, string Message, int Price, string Number, int Coups)
+record ImmunityRequest(int? Price);
+
+record GiftDto(string Id, string Country, DateOnly Date, string To, string From, string Message, int Price, string Number, int Coups, bool Immune)
 {
-    public static GiftDto Of(Gift g) => new(g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Price, g.Number, g.Coups);
+    public static GiftDto Of(Gift g) => new(g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Price, g.Number, g.Coups, g.Immune);
 }

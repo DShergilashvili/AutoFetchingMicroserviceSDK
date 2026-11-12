@@ -38,6 +38,9 @@ public static class Pricing
     public static int Multiplier(DateOnly d) => SpecialDay(d) is null ? 1 : 2;
     public static int Price(Country c, DateOnly d) => c.BasePrice * Multiplier(d);
 
+    /// <summary>Immunity from coups costs half of what the day cost, and at least $5.</summary>
+    public static int ImmunityPrice(int price) => Math.Max(5, (int)Math.Ceiling(price * 0.5));
+
     /// <summary>Taking something that is already held costs 50% more than the holder paid, and always at least $1 more.</summary>
     public static int CoupPrice(int worth) => Math.Max(worth + 1, (int)Math.Ceiling(worth * 1.5));
 }

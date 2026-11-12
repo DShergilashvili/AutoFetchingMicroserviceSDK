@@ -13,7 +13,8 @@ let summary = { count: 0, total: 0, recent: [] };
 let mine = {};        // "GE_2027-02-14" -> {id, coups}: gifts bought in this browser, valid until someone stages a coup
 let certs = {};       // certificate id -> full gift
 let stage = 'idle', quoted = 0, err = '', loadErr = '', panelKey = '';
-const draft = { to: '', from: '', msg: '' };
+const draft = { to: '', from: '', msg: '', immune: false };
+const immunityOf = price => Math.max(5, Math.ceil(price * 0.5));   // same rule as the server
 
 try { const s = JSON.parse(localStorage.getItem(LS) || '{}'); mine = s.mine || {}; draft.from = s.from || ''; } catch (e) { }
 const save = () => { try { localStorage.setItem(LS, JSON.stringify({ mine, from: draft.from })); } catch (e) { } };
@@ -107,12 +108,13 @@ dateEl.addEventListener('change', () => {
 /* ---------- purchase ---------- */
 function startPay() {
   if (draft.to.trim().length < 2) { err = t('ჩაწერე, ვის ჩუქნი (მინიმუმ 2 სიმბოლო).'); return render(); }
-  err = ''; quoted = priceOf(selected); stage = 'confirm'; save(); render();
+  const base = priceOf(selected);
+  err = ''; quoted = base + (draft.immune ? immunityOf(base) : 0); stage = 'confirm'; save(); render();
 }
 // The purchase request. Sent once in demo mode; with a payment provider it is sent twice,
 // the second time carrying the order the buyer approved.
 function giftAttempt() {
-  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang, price: quoted };
+  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang, price: quoted, immune: draft.immune };
   return {
     key,
     send: orderId => api('/api/gifts', body, orderId),
@@ -120,7 +122,7 @@ function giftAttempt() {
 }
 async function giftDone(key, g) {
   certs[g.id] = g; mine[key] = { id: g.id, coups: g.coups }; save();
-  draft.to = ''; draft.msg = '';
+  draft.to = ''; draft.msg = ''; draft.immune = false;
   stage = 'idle';
   await Promise.all([loadDay(), loadSummary()]);
 }
@@ -189,6 +191,7 @@ function certificate(c, g) {
     h('div', { text: t('მმართველობის დღე: ') + fmt(g.date) }),
     g.message ? h('div', { class: 'motto', text: (lang === 'en' ? '“' : '„') + g.message + (lang === 'en' ? '”' : '“') }) : null,
     g.from ? h('div', { text: t('გამჩუქებელი: ') + g.from }) : null,
+    g.immune ? h('div', { class: 'no', text: t('დაცულია გადატრიალებისგან') }) : null,
     h('div', { class: 'foot', text: t('სიმბოლური ტიტული. არ იძლევა არანაირ იურიდიულ ან პოლიტიკურ უფლებას.') })),
   h('a', { class: 'btn', href: '/cert/' + g.id, target: '_blank', rel: 'noopener', text: t('სერტიფიკატი და მთავრობის დანიშვნა') }),
   h('div', { class: 'share' }, h('div', { class: 'small', text: t('გაუგზავნე ბმული ან გააზიარე') }), h('div', { class: 'row' },
@@ -207,6 +210,11 @@ function renderPanel() {
   if (certId) {
     if (certs[certId]) kids.push(...certificate(c, certs[certId]));
     else { kids.push(h('p', { class: 'small', text: t('სერტიფიკატი იტვირთება…') })); loadCert(certId); }
+  } else if (taken && taken.immune) {
+    kids.push(h('dl', { class: 'facts' },
+      h('dt', { text: t('პრეზიდენტი ამ დღეს') }), h('dd', { text: taken.to }),
+      taken.from ? [h('dt', { text: t('გამჩუქებელი') }), h('dd', { text: taken.from })] : null),
+      h('p', { class: 'small', text: t('ეს პრეზიდენტი გადატრიალებისგან დაცულია. აირჩიე სხვა თარიღი ან სხვა ქვეყანა.') }));
   } else if (stage === 'idle') {
     if (taken) kids.push(h('dl', { class: 'facts' },
       h('dt', { text: t('პრეზიდენტი ამ დღეს') }), h('dd', { text: taken.to + (taken.coups ? t(' · გადატრიალება №') + taken.coups : '') }),
@@ -219,8 +227,11 @@ function renderPanel() {
         h('input', { id: 'f-from', type: 'text', maxlength: '40', autocomplete: 'name', value: draft.from, oninput: e => { draft.from = e.target.value; } })),
       h('label', { class: 'field' }, t('მილოცვა სერტიფიკატზე (არასავალდებულო)'),
         h('textarea', { id: 'f-msg', maxlength: '140', oninput: e => { draft.msg = e.target.value; } }, draft.msg)),
+      h('label', { class: 'check' },
+        h('input', { id: 'f-immune', type: 'checkbox', checked: draft.immune, onchange: e => { draft.immune = e.target.checked; panelKey = ''; render(); } }),
+        h('span', {}, t('იმუნიტეტი: ვერავინ ჩამოაგდებს'), h('b', { text: ' +' + money(immunityOf(price)) }))),
       err ? h('p', { class: 'err', text: err }) : null,
-      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price) }),
+      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price + (draft.immune ? immunityOf(price) : 0)) }),
       taken ? null : h('p', { class: 'small', text: t('ფასი ქვეყნის ფართობზეა დამოკიდებული. სადღესასწაულო დღეებში (ვალენტინობა, 8 მარტი, ახალი წელი) ორმაგია.') }));
   } else {
     kids.push(h('div', { class: 'pay' },

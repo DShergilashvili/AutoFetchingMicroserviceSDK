@@ -19,6 +19,8 @@ public class Gift
     public int Coups { get; set; }
     /// <summary>Everything ever paid for this country-day, by every president.</summary>
     public int TotalPaid { get; set; }
+    /// <summary>Paid protection: nobody can overthrow this president. A new president starts without it.</summary>
+    public bool Immune { get; set; }
     public string PaymentRef { get; set; } = "";
     public DateTime CreatedAt { get; set; }
 

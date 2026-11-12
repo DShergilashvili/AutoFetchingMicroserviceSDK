@@ -90,6 +90,18 @@
     else if (pb) mountPay('/api/gifts/' + id + '/cabinet', () => ({ post: pb.dataset.post, name, price: Number(pb.dataset.price) }));
   }
 
+  // Immunity box (rendered by the server only while the president is unprotected).
+  const imm = document.getElementById('immunity');
+  if (imm) {
+    const act = document.getElementById('immunity-act'), price = Number(imm.dataset.price);
+    const buy = orderId => api('/api/gifts/' + id + '/immunity', { price }, orderId);
+    const fail = e => { act.replaceChildren(h('span', { class: 'err', text: (e && e.message) || t('ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.') })); };
+    Pay.ready.then(() => {
+      if (Pay.enabled) { act.id = 'pay-immunity'; Pay.mount(act, buy, () => location.reload(), fail); }
+      else act.replaceChildren(h('button', { class: 'btn', type: 'button', text: t('იყიდე იმუნიტეტი'), onclick: async e => { e.target.disabled = true; try { await buy(null); location.reload(); } catch (x) { fail(x); } } }));
+    });
+  }
+
   render();
   Pay.ready.then(render);
   api('/api/gifts/' + id + '/cabinet').then(c => { cab = c; render(); }, () => { err = t('მთავრობა ვერ ჩაიტვირთა. გადატვირთე გვერდი.'); render(); });
