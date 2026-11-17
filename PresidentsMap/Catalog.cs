@@ -38,6 +38,12 @@ public static class Pricing
     public static int Multiplier(DateOnly d) => SpecialDay(d) is null ? 1 : 2;
     public static int Price(Country c, DateOnly d) => c.BasePrice * Multiplier(d);
 
+    /// <summary>A decree, and each later change of it.</summary>
+    public const int DecreePrice = 3;
+
+    /// <summary>A diplomatic note to a ruler.</summary>
+    public const int NotePrice = 2;
+
     /// <summary>Immunity from coups costs half of what the day cost, and at least $5.</summary>
     public static int ImmunityPrice(int price) => Math.Max(5, (int)Math.Ceiling(price * 0.5));
 
@@ -79,6 +85,9 @@ public static class Cabinet
         new("sweets", "ტკბილეულის მინისტრი", 1),
         new("rest", "დასვენების მინისტრი", 1),
         new("fun", "გართობის მინისტრი", 1),
+        new("memes", "მემების მინისტრი", 1),
+        new("coffee", "ყავის მინისტრი", 1),
+        new("dreams", "ოცნებების მინისტრი", 1),
     ];
 
     public const int CustomPrice = 3;

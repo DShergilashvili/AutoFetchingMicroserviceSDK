@@ -94,6 +94,29 @@ public class Mailer
                   + "\nპრეზიდენტების რუკა");
     }
 
+    /// <summary>Tells the buyer that someone left a diplomatic note; it brings them back to the certificate.</summary>
+    public void NoteReceived(Gift g, Country c, Note note)
+    {
+        if (g.BuyerEmail.Length == 0) return;
+        var en = g.Lang == "en";
+        var link = $"{g.Origin}/cert/{g.Id}";
+        Send(g.BuyerEmail,
+            en ? $"A diplomatic note for {g.To}: {c.Name("en")}" : $"დიპლომატიური ნოტა: {g.To}, {c.Name("ka")}",
+            en
+                ? $"{note.From} sent a diplomatic note to {g.To}:\n\n“{note.Text}”\n\nRead it and answer on the certificate page:\n{link}\n\nPresidents Map"
+                : $"გამომგზავნი: {note.From}\nადრესატი: {g.To}\n\n„{note.Text}“\n\nნახე და უპასუხე სერტიფიკატის გვერდზე:\n{link}\n\nპრეზიდენტების რუკა");
+    }
+
+    public void Passport(string email, string link, string lang)
+    {
+        var en = lang == "en";
+        Send(email,
+            en ? "Your Presidents Map passport" : "შენი პასპორტი: პრეზიდენტების რუკა",
+            en
+                ? $"Every country you have ruled or gifted, in one place:\n{link}\n\nKeep this link private: whoever has it can see your passport.\n\nPresidents Map"
+                : $"ყველა ქვეყანა, რომელიც გიმართავს ან გიჩუქებია, ერთ ადგილას:\n{link}\n\nეს ბმული პირადია: ვისაც აქვს, შენს პასპორტს ხედავს.\n\nპრეზიდენტების რუკა");
+    }
+
     public void Delivery(Gift g, Country c)
     {
         var en = g.Lang == "en";

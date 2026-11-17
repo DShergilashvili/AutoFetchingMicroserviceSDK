@@ -58,6 +58,7 @@ public static class CertificatePage
             {{(g.Message.Length > 0 ? $"<div class=\"motto\">{(lang == "en" ? "“" : "„")}{E(g.Message)}{(lang == "en" ? "”" : "“")}</div>" : "")}}
             {{(g.From.Length > 0 ? $"<div>{E(giver)}</div>" : "")}}
             {{(g.Coups > 0 ? $"<div class=\"no\">{E(T("გადატრიალება"))} №{g.Coups}</div>" : "")}}
+            {{(g.Decree.Length > 0 ? $"<div class=\"decree\">{E(T("დეკრეტი"))}: {E(g.Decree)}</div>" : "")}}
             {{(g.Immune ? $"<div class=\"no\">{E(T("დაცულია გადატრიალებისგან"))}</div>" : "")}}
             <div class="foot">{{E(T("სიმბოლური ტიტული. არ იძლევა არანაირ იურიდიულ ან პოლიტიკურ უფლებას."))}}</div>
           </div>
@@ -69,6 +70,8 @@ public static class CertificatePage
             <a class="btn ghost" target="_blank" rel="noopener noreferrer" href="https://t.me/share/url?url={{u}}&amp;text={{share}}">Telegram</a>
           </div>
           {{(g.Immune ? "" : $"<div class=\"bundle\" id=\"immunity\" data-price=\"{Pricing.ImmunityPrice(g.Price)}\"><div><strong>{E(T("იმუნიტეტი"))} · ${Pricing.ImmunityPrice(g.Price)}</strong><div class=\"small\">{E(T("დაიცავი პრეზიდენტი: ამ დღეს მას ვეღარავინ ჩამოაგდებს."))}</div></div><span id=\"immunity-act\"></span></div><a class=\"btn coup\" href=\"/?c={E(g.Country)}&amp;d={g.Date:yyyy-MM-dd}\">{E(T("წაართვი პრეზიდენტობა"))} · ${Pricing.CoupPrice(g.Price)}</a>")}}
+          <div class="bundle" id="decree" data-has="{{(g.Decree.Length > 0 ? 1 : 0)}}"><div><strong>{{E(T(g.Decree.Length > 0 ? "შეცვალე დეკრეტი" : "გამოეცი დეკრეტი"))}} · ${{Pricing.DecreePrice}}</strong><div class="small">{{E(T("ერთი ხალისიანი კანონი, რომელიც სერტიფიკატზე და გაზიარების სურათზე დაიბეჭდება."))}}</div></div><span id="decree-act"></span></div>
+          <section class="cabinet" id="notes"></section>
           <section class="cabinet" id="cabinet" data-id="{{E(g.Id)}}" aria-live="polite"></section>
           <a class="btn ghost" href="/">{{E(T("აჩუქე შენც ქვეყანა"))}}</a>
           <footer class="legal"><a href="/legal.html#terms">{{E(T("წესები"))}}</a><a href="/legal.html#privacy">{{E(T("კონფიდენციალურობა"))}}</a><a href="/legal.html#refunds">{{E(T("თანხის დაბრუნება"))}}</a></footer>

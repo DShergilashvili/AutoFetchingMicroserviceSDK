@@ -147,3 +147,12 @@ html[lang="en"] [data-l="ka"],html[lang="ka"] [data-l="en"]{display:none}
   .cert{background:#fff;color:#000;border-color:#8a7a3c;outline-color:#8a7a3c;padding:18mm 12mm;gap:5mm}
   .cert .who{font-size:34pt} .cert .land{font-size:20pt} .cert .k{font-size:11pt} .cert div{font-size:13pt} .cert .foot,.cert .no{font-size:9pt}
 }
+.cert .decree{font-weight:600;overflow-wrap:anywhere}
+.stack{display:flex;flex-direction:column;gap:8px;width:100%}
+.stack input{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;color:var(--ink);font-size:15px;width:100%}
+#decree{flex-direction:column;align-items:stretch}
+#decree-act{display:block}
+.passport{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+.passport .search{flex:1 1 200px;min-width:0}
+.field b{color:var(--ink)}
+#decree>div{flex:none}

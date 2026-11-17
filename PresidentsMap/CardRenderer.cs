@@ -36,8 +36,19 @@ public sealed class CardRenderer
         Line(c, g.To, _serif, 92, 300, ink);
         Line(c, (g.Title == Titles.Default ? "" : Titles.Name(g.Title, lang) + " · ") + T("ქვეყანა") + ": " + countryName, _serif, 50, 390, ink);
         Line(c, T("მმართველობის დღე") + ": " + Loc.Date(lang, g.Date), _sans, 34, 456, ink);
-        if (g.From.Length > 0) Line(c, T("გამჩუქებელი") + (lang == "en" ? " " : ": ") + g.From, _sans, 30, 514, soft);
-        Line(c, T("სიმბოლური ტიტული · პრეზიდენტების რუკა"), _sans, 20, 566, soft);
+        var giver = T("გამჩუქებელი") + (lang == "en" ? " " : ": ") + g.From;
+        if (g.Decree.Length > 0)
+        {
+            // With a decree there is one more line, so the lower part sits a little tighter.
+            Line(c, T("დეკრეტი") + ": " + g.Decree, _sans, 28, 504, ink);
+            if (g.From.Length > 0) Line(c, giver, _sans, 24, 542, soft);
+            Line(c, T("სიმბოლური ტიტული · პრეზიდენტების რუკა"), _sans, 18, 576, soft);
+        }
+        else
+        {
+            if (g.From.Length > 0) Line(c, giver, _sans, 30, 514, soft);
+            Line(c, T("სიმბოლური ტიტული · პრეზიდენტების რუკა"), _sans, 20, 566, soft);
+        }
 
         using var img = surface.Snapshot();
         using var data = img.Encode(SKEncodedImageFormat.Png, 90);

@@ -108,6 +108,47 @@
     else if (pb) mountPay('/api/gifts/' + id + '/cabinet', () => ({ post: pb.dataset.post, name, title: custom, price: Number(pb.dataset.price) }));
   }
 
+  // Decree: the ruler's one law. Each new text is paid again.
+  const dec = document.getElementById('decree');
+  if (dec) {
+    const act = document.getElementById('decree-act');
+    let text = '', openForm = false;
+    const buy = orderId => api('/api/gifts/' + id + '/decree', { text, price: Pay.decreePrice }, orderId);
+    const fail = e => { draw((e && e.message) || t('ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.')); };
+    function draw(error) {
+      if (!openForm) return act.replaceChildren(h('button', { class: 'btn', type: 'button', text: t('დაწერე'), onclick: () => { openForm = true; draw(); document.getElementById('decree-text')?.focus(); } }));
+      act.replaceChildren(h('form', { class: 'stack', onsubmit: async e => { e.preventDefault(); if (Pay.enabled) return; try { await buy(null); location.reload(); } catch (x) { fail(x); } } },
+        h('input', { id: 'decree-text', type: 'text', maxlength: '100', placeholder: t('მაგ. დღეს ყველა ყავა უფასოა'), 'aria-label': t('დეკრეტი'), value: text, oninput: e => { text = e.target.value; } }),
+        Pay.enabled ? h('div', { id: 'pay-decree' }) : h('button', { class: 'btn', type: 'submit', text: t('გადახდა ') + money(Pay.decreePrice) }),
+        error ? h('span', { class: 'err', text: error }) : null));
+      if (Pay.enabled) Pay.mount(document.getElementById('pay-decree'), buy, () => location.reload(), fail);
+    }
+    Pay.ready.then(() => draw());
+  }
+
+  // Diplomatic notes: anyone with the link pays to leave the ruler a short message.
+  const notesBox = document.getElementById('notes');
+  if (notesBox) {
+    let notes = [], from = '', text = '', nerr = '';
+    const send = orderId => api('/api/gifts/' + id + '/notes', { from, text, price: Pay.notePrice }, orderId);
+    const ok = list => { notes = list; from = ''; text = ''; nerr = ''; drawNotes(); };
+    const bad = e => { nerr = (e && e.message) || t('ვერ შეინახა. შეამოწმე კავშირი და სცადე თავიდან.'); drawNotes(); };
+    function drawNotes() {
+      notesBox.replaceChildren(
+        h('h2', { text: t('დიპლომატიური ნოტები') }),
+        h('p', { class: 'small', text: t('გაუგზავნე მმართველს მოკლე ნოტა. ის აქ გამოჩნდება და მფლობელს წერილითაც მიუვა.') }),
+        notes.length ? h('ul', { class: 'posts' }, notes.map(n => h('li', {}, h('div', { class: 't' }, h('span', { text: (lang === 'en' ? '“' : '„') + n.text + (lang === 'en' ? '”' : '“') }), h('small', { text: n.from }))))) : null,
+        h('form', { class: 'stack', onsubmit: async e => { e.preventDefault(); if (Pay.enabled) return; try { ok(await send(null)); } catch (x) { bad(x); } } },
+          h('input', { id: 'note-from', type: 'text', maxlength: '40', placeholder: t('ვისგან, მაგ. იტალიის პრეზიდენტი'), 'aria-label': t('ვისგან'), value: from, oninput: e => { from = e.target.value; } }),
+          h('input', { id: 'note-text', type: 'text', maxlength: '140', placeholder: t('ნოტის ტექსტი'), 'aria-label': t('ნოტის ტექსტი'), value: text, oninput: e => { text = e.target.value; } }),
+          Pay.enabled ? h('div', { id: 'pay-note' }) : h('button', { class: 'btn', type: 'submit', text: t('გაგზავნა · ') + money(Pay.notePrice) }),
+          nerr ? h('span', { class: 'err', text: nerr }) : null));
+      if (Pay.enabled) Pay.mount(document.getElementById('pay-note'), send, ok, bad);
+    }
+    Pay.ready.then(drawNotes);
+    api('/api/gifts/' + id + '/notes').then(list => { notes = list; drawNotes(); }, () => { });
+  }
+
   // Immunity box (rendered by the server only while the president is unprotected).
   const imm = document.getElementById('immunity');
   if (imm) {

@@ -23,6 +23,7 @@ if (config["Smtp:Host"] is { Length: > 0 })
 else
     builder.Services.AddSingleton<IEmailSender, LogEmailSender>();
 builder.Services.AddSingleton<Mailer>();
+builder.Services.AddSingleton<Signer>();
 builder.Services.AddHostedService<MailWorker>();
 
 builder.Services.AddRateLimiter(o =>
@@ -44,7 +45,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
-    scope.ServiceProvider.GetRequiredService<AppDb>().Database.Migrate();
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+    db.Database.Migrate();
+    await app.Services.GetRequiredService<Signer>().InitAsync(db, config);
+}
 
 app.UseForwardedHeaders();
 app.Use(async (ctx, next) =>
@@ -60,6 +65,7 @@ app.UseRateLimiter();
 app.MapGifts();
 app.MapCabinet();
 app.MapPages();
+app.MapPassport();
 app.MapAdmin();
 
 app.Run();

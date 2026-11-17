@@ -1,8 +1,8 @@
 // Payment in the browser. With no PayPal key configured on the server the site runs in demo mode
 // and Pay.enabled stays false; pages then use their plain "confirm" buttons.
 window.Pay = (() => {
-  let clientId = null, sdk = null, titlePrice = 10;
-  const ready = fetch('/api/config').then(r => r.json()).then(c => { clientId = c.paypalClientId || null; titlePrice = c.titlePrice || titlePrice; }).catch(() => { });
+  let clientId = null, sdk = null, titlePrice = 10, decreePrice = 3, notePrice = 2;
+  const ready = fetch('/api/config').then(r => r.json()).then(c => { clientId = c.paypalClientId || null; titlePrice = c.titlePrice || titlePrice; decreePrice = c.decreePrice || decreePrice; notePrice = c.notePrice || notePrice; }).catch(() => { });
 
   function loadSdk() {
     if (!sdk) sdk = new Promise((resolve, reject) => {
@@ -33,5 +33,5 @@ window.Pay = (() => {
     }).render(el);
   }
 
-  return { ready, mount, get enabled() { return !!clientId; }, get titlePrice() { return titlePrice; } };
+  return { ready, mount, get enabled() { return !!clientId; }, get titlePrice() { return titlePrice; }, get decreePrice() { return decreePrice; }, get notePrice() { return notePrice; } };
 })();

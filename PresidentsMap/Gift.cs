@@ -28,6 +28,8 @@ public class Gift
     public int Coups { get; set; }
     /// <summary>Everything ever paid for this country-day, by every president.</summary>
     public int TotalPaid { get; set; }
+    /// <summary>The ruler's one playful law for the day, printed on the certificate. Paid; a new ruler starts without one.</summary>
+    public string Decree { get; set; } = "";
     /// <summary>Paid protection: nobody can overthrow this president. A new president starts without it.</summary>
     public bool Immune { get; set; }
     public string PaymentRef { get; set; } = "";
@@ -61,10 +63,51 @@ public class Appointment
     public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>A short paid message to the ruler of a country-day, shown on its certificate page.</summary>
+public class Note
+{
+    public int Id { get; set; }
+    public string GiftId { get; set; } = "";
+    public string From { get; set; } = "";
+    public string Text { get; set; } = "";
+    public int Price { get; set; }
+    public string PaymentRef { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// One person's time as ruler. A gift row always shows the current ruler; reigns keep the history,
+/// so a passport can list every country someone has held, including the ones they lost.
+/// </summary>
+public class Reign
+{
+    public int Id { get; set; }
+    public string GiftId { get; set; } = "";
+    public string Country { get; set; } = "";
+    public DateOnly Date { get; set; }
+    public string To { get; set; } = "";
+    public string Title { get; set; } = Titles.Default;
+    public string BuyerEmail { get; set; } = "";
+    public string RecipientEmail { get; set; } = "";
+    public DateTime StartedAt { get; set; }
+    /// <summary>Set when someone staged a coup; null while this ruler still holds the day.</summary>
+    public DateTime? EndedAt { get; set; }
+}
+
+/// <summary>Small values the site generates once and must keep, such as its signing secret.</summary>
+public class Setting
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+}
+
 public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
 {
     public DbSet<Gift> Gifts => Set<Gift>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<Note> Notes => Set<Note>();
+    public DbSet<Reign> Reigns => Set<Reign>();
+    public DbSet<Setting> Settings => Set<Setting>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -77,10 +120,24 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         g.Property(x => x.To).HasMaxLength(Limits.Name);
         g.Property(x => x.From).HasMaxLength(Limits.Name);
         g.Property(x => x.Message).HasMaxLength(Limits.Message);
+        g.Property(x => x.Decree).HasMaxLength(Limits.Decree);
         g.Property(x => x.BuyerEmail).HasMaxLength(Limits.Email);
         g.Property(x => x.RecipientEmail).HasMaxLength(Limits.Email);
         g.HasIndex(x => new { x.Delivered, x.Date });
         g.Property(x => x.Coups).IsConcurrencyToken();
+
+        var n = b.Entity<Note>();
+        n.HasIndex(x => x.GiftId);
+        n.HasOne<Gift>().WithMany().HasForeignKey(x => x.GiftId);
+        n.Property(x => x.From).HasMaxLength(Limits.Name);
+        n.Property(x => x.Text).HasMaxLength(Limits.Message);
+
+        var r = b.Entity<Reign>();
+        r.HasIndex(x => x.BuyerEmail);
+        r.HasIndex(x => x.RecipientEmail);
+        r.HasIndex(x => x.GiftId);
+
+        b.Entity<Setting>().HasKey(x => x.Key);
 
         var a = b.Entity<Appointment>();
         a.HasIndex(x => new { x.GiftId, x.Post }).IsUnique();   // one person per post
@@ -96,5 +153,6 @@ public static class Limits
     public const int Name = 40;
     public const int Message = 140;
     public const int Email = 254;
+    public const int Decree = 100;
     public const int PostTitle = 30;
 }

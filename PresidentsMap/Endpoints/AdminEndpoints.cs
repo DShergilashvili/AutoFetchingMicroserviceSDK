@@ -47,17 +47,23 @@ public static class AdminEndpoints
             }
         });
 
+        // The owner can open any passport, e.g. to help a customer who lost the email.
+        admin.MapGet("/passport", (string email, HttpRequest http, Signer signer, IConfiguration config) =>
+            Results.Ok(new { link = signer.Link(Api.Origin(http, config), email, "ka") }));
+
         admin.MapGet("/gifts", async (AppDb db) =>
         {
             var gifts = await db.Gifts.OrderByDescending(g => g.CreatedAt).Take(200).ToListAsync();
             var ids = gifts.Select(g => g.Id).ToList();
             var seats = await db.Appointments.Where(a => ids.Contains(a.GiftId)).ToListAsync();
+            var notes = await db.Notes.Where(n => ids.Contains(n.GiftId)).ToListAsync();
             return Results.Ok(gifts.Select(g => new
             {
-                g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Title, g.Price, g.TotalPaid, g.CabinetPaid, g.Coups, g.Immune,
+                g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Title, g.Decree, g.Price, g.TotalPaid, g.CabinetPaid, g.Coups, g.Immune,
                 g.BuyerEmail, g.RecipientEmail, g.PaymentRef, g.CreatedAt,
                 seats = seats.Where(a => a.GiftId == g.Id).OrderBy(a => a.Post)
                     .Select(a => new { a.Id, a.Post, a.CustomTitle, a.Name, a.TotalPaid, a.Coups, a.PaymentRef }),
+                notes = notes.Where(n => n.GiftId == g.Id).OrderBy(n => n.Id).Select(n => new { n.Id, n.From, n.Text, n.Price }),
             }));
         });
 
@@ -65,11 +71,20 @@ public static class AdminEndpoints
         admin.MapDelete("/gifts/{id}", async (string id, AppDb db) =>
         {
             await db.Appointments.Where(a => a.GiftId == id).ExecuteDeleteAsync();
+            await db.Notes.Where(n => n.GiftId == id).ExecuteDeleteAsync();
+            await db.Reigns.Where(r => r.GiftId == id).ExecuteDeleteAsync();
             return await db.Gifts.Where(g => g.Id == id).ExecuteDeleteAsync() == 1 ? Results.NoContent() : Results.NotFound();
         });
 
         admin.MapDelete("/seats/{seatId:int}", async (int seatId, AppDb db) =>
             await db.Appointments.Where(a => a.Id == seatId).ExecuteDeleteAsync() == 1 ? Results.NoContent() : Results.NotFound());
+
+        admin.MapDelete("/notes/{noteId:int}", async (int noteId, AppDb db) =>
+            await db.Notes.Where(n => n.Id == noteId).ExecuteDeleteAsync() == 1 ? Results.NoContent() : Results.NotFound());
+
+        admin.MapPost("/gifts/{id}/clear-decree", async (string id, AppDb db) =>
+            await db.Gifts.Where(g => g.Id == id).ExecuteUpdateAsync(u => u.SetProperty(g => g.Decree, "")) == 1
+                ? Results.NoContent() : Results.NotFound());
 
         admin.MapPost("/gifts/{id}/clear-message", async (string id, AppDb db) =>
             await db.Gifts.Where(g => g.Id == id).ExecuteUpdateAsync(u => u.SetProperty(g => g.Message, "")) == 1

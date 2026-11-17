@@ -13,10 +13,11 @@ let summary = { count: 0, total: 0, recent: [], contested: [] };
 let mine = {};        // "GE_2027-02-14" -> {id, coups}: gifts bought in this browser, valid until someone stages a coup
 let certs = {};       // certificate id -> full gift
 let stage = 'idle', quoted = 0, err = '', loadErr = '', panelKey = '';
-const draft = { to: '', from: '', msg: '', immune: false, title: 'president', email: '', toEmail: '' };
+const draft = { to: '', from: '', msg: '', immune: false, title: 'president', email: '', toEmail: '', decree: '' };
 const TITLES = { president: 'პრეზიდენტი', king: 'მეფე', queen: 'დედოფალი', emperor: 'იმპერატორი', empress: 'იმპერატრიცა' };
 let titlePrice = 10;
 const titleFee = () => draft.title === 'president' ? 0 : titlePrice;
+const decreeFee = () => draft.decree.trim() ? Pay.decreePrice : 0;
 const immunityOf = price => Math.max(5, Math.ceil(price * 0.5));   // same rule as the server
 
 try { const s = JSON.parse(localStorage.getItem(LS) || '{}'); mine = s.mine || {}; draft.from = s.from || ''; draft.email = s.email || ''; } catch (e) { }
@@ -112,12 +113,12 @@ dateEl.addEventListener('change', () => {
 function startPay() {
   if (draft.to.trim().length < 2) { err = t('ჩაწერე, ვის ჩუქნი (მინიმუმ 2 სიმბოლო).'); return render(); }
   const base = priceOf(selected);
-  err = ''; quoted = base + (draft.immune ? immunityOf(base) : 0) + titleFee(); stage = 'confirm'; save(); render();
+  err = ''; quoted = base + (draft.immune ? immunityOf(base) : 0) + titleFee() + decreeFee(); stage = 'confirm'; save(); render();
 }
 // The purchase request. Sent once in demo mode; with a payment provider it is sent twice,
 // the second time carrying the order the buyer approved.
 function giftAttempt() {
-  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang, price: quoted, immune: draft.immune, title: draft.title, email: draft.email, recipientEmail: draft.toEmail };
+  const key = cur(), body = { country: selected, date, to: draft.to, from: draft.from, message: draft.msg, lang, price: quoted, immune: draft.immune, title: draft.title, email: draft.email, recipientEmail: draft.toEmail, decree: draft.decree };
   return {
     key,
     send: orderId => api('/api/gifts', body, orderId),
@@ -125,7 +126,7 @@ function giftAttempt() {
 }
 async function giftDone(key, g) {
   certs[g.id] = g; mine[key] = { id: g.id, coups: g.coups }; save();
-  draft.to = ''; draft.msg = ''; draft.immune = false; draft.title = 'president'; draft.toEmail = '';
+  draft.to = ''; draft.msg = ''; draft.immune = false; draft.title = 'president'; draft.toEmail = ''; draft.decree = '';
   stage = 'idle';
   await Promise.all([loadDay(), loadSummary()]);
 }
@@ -175,6 +176,14 @@ function renderList() {
       h('span', { text: money(priceOf(c.id)) }))));
 }
 $('search').addEventListener('input', renderList);
+$('passport').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    const res = await fetch('/api/passport', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lang': lang }, body: JSON.stringify({ email: $('passport-email').value, lang }) });
+    if (!res.ok) throw res.status;
+    $('passport-msg').textContent = t('თუ ამ მისამართით ტიტულები არსებობს, ბმული გაიგზავნა. შეამოწმე საფოსტო ყუთი.');
+  } catch (x) { $('passport-msg').textContent = t('ვერ გაიგზავნა. შეამოწმე მისამართი და სცადე თავიდან.'); }
+});
 
 function shareLinks(msg, url) {
   const t = encodeURIComponent(msg), u = encodeURIComponent(url), tu = encodeURIComponent(msg + ' ' + url);
@@ -201,6 +210,7 @@ function certificate(c, g) {
     h('div', { text: t('მმართველობის დღე: ') + fmt(g.date) }),
     g.message ? h('div', { class: 'motto', text: (lang === 'en' ? '“' : '„') + g.message + (lang === 'en' ? '”' : '“') }) : null,
     g.from ? h('div', { text: t('გამჩუქებელი: ') + g.from }) : null,
+    g.decree ? h('div', { class: 'decree', text: t('დეკრეტი: ') + g.decree }) : null,
     g.immune ? h('div', { class: 'no', text: t('დაცულია გადატრიალებისგან') }) : null,
     h('div', { class: 'foot', text: t('სიმბოლური ტიტული. არ იძლევა არანაირ იურიდიულ ან პოლიტიკურ უფლებას.') })),
   h('a', { class: 'btn', href: '/cert/' + g.id, target: '_blank', rel: 'noopener', text: t('სერტიფიკატი და მთავრობის დანიშვნა') }),
@@ -240,6 +250,8 @@ function renderPanel() {
       h('label', { class: 'field' }, t('ტიტული'),
         h('select', { id: 'f-title', onchange: e => { draft.title = e.target.value; panelKey = ''; render(); } },
           Object.keys(TITLES).map(k => h('option', { value: k, selected: draft.title === k, text: t(TITLES[k]) + (k === 'president' ? '' : ' +' + money(titlePrice)) })))),
+      h('label', { class: 'field' }, t('დეკრეტი: ერთი ხალისიანი კანონი სერტიფიკატზე (არასავალდებულო)'), h('b', { text: ' +' + money(Pay.decreePrice) }),
+        h('input', { id: 'f-decree', type: 'text', maxlength: '100', placeholder: t('მაგ. დღეს ყველა ყავა უფასოა'), value: draft.decree, oninput: e => { draft.decree = e.target.value; }, onchange: () => { panelKey = ''; render(); } })),
       h('label', { class: 'field' }, t('შენი ელფოსტა: ქვითარი და შეტყობინება, თუ ჩამოაგდებენ (არასავალდებულო)'),
         h('input', { id: 'f-email', type: 'email', maxlength: '254', autocomplete: 'email', value: draft.email, oninput: e => { draft.email = e.target.value; } })),
       h('label', { class: 'field' }, t('მიმღების ელფოსტა: სერტიფიკატი მიუვა საჩუქრის დღეს (არასავალდებულო)'),
@@ -248,7 +260,7 @@ function renderPanel() {
         h('input', { id: 'f-immune', type: 'checkbox', checked: draft.immune, onchange: e => { draft.immune = e.target.checked; panelKey = ''; render(); } }),
         h('span', {}, t('იმუნიტეტი: ვერავინ ჩამოაგდებს'), h('b', { text: ' +' + money(immunityOf(price)) }))),
       err ? h('p', { class: 'err', text: err }) : null,
-      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price + (draft.immune ? immunityOf(price) : 0) + titleFee()) }),
+      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price + (draft.immune ? immunityOf(price) : 0) + titleFee() + decreeFee()) }),
       taken ? null : h('p', { class: 'small', text: t('ფასი ქვეყნის ფართობზეა დამოკიდებული. სადღესასწაულო დღეებში (ვალენტინობა, 8 მარტი, ახალი წელი) ორმაგია.') }));
   } else {
     kids.push(h('div', { class: 'pay' },

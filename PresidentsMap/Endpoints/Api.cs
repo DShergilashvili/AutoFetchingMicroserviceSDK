@@ -40,7 +40,7 @@ public static class Api
     }
 }
 
-public record GiftDto(string Id, string Country, DateOnly Date, string To, string From, string Message, int Price, string Number, int Coups, bool Immune, string Title)
+public record GiftDto(string Id, string Country, DateOnly Date, string To, string From, string Message, int Price, string Number, int Coups, bool Immune, string Title, string Decree)
 {
-    public static GiftDto Of(Gift g) => new(g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Price, g.Number, g.Coups, g.Immune, g.Title);
+    public static GiftDto Of(Gift g) => new(g.Id, g.Country, g.Date, g.To, g.From, g.Message, g.Price, g.Number, g.Coups, g.Immune, g.Title, g.Decree);
 }

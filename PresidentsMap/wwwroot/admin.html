@@ -25,7 +25,7 @@
   </section>
   <p class="small" id="hint">ბოლო 200 საჩუქარი. წაშლა ათავისუფლებს დღეს ან სკამს; თანხა ავტომატურად არ ბრუნდება, საჭიროების შემთხვევაში დააბრუნე გადახდის სისტემიდან.</p>
   <div class="scroll"><table id="table" hidden>
-    <thead><tr><th>ქვეყანა, დღე</th><th>მმართველი</th><th>გამჩუქებელი, მილოცვა</th><th>ელფოსტები</th><th>შემოსავალი</th><th>მთავრობა</th><th></th></tr></thead>
+    <thead><tr><th>ქვეყანა, დღე</th><th>მმართველი</th><th>გამჩუქებელი, მილოცვა, დეკრეტი, ნოტები</th><th>ელფოსტები</th><th>შემოსავალი</th><th>მთავრობა</th><th></th></tr></thead>
     <tbody id="rows"></tbody>
   </table></div>
 </main>
@@ -68,9 +68,11 @@ async function load() {
   $('rows').replaceChildren(...gifts.map(g => h('tr', {},
     h('td', {}, h('a', { href: '/cert/' + g.id, target: '_blank', rel: 'noopener', text: g.country + ' ' + g.date })),
     h('td', { text: g.to + ' (' + g.title + ')' + (g.coups ? ' · გადატრ. ' + g.coups : '') + (g.immune ? ' · იმუნიტეტი' : '') }),
-    h('td', {}, g.from || '—', h('br'), g.message || '', g.message ? danger('მილოცვის წაშლა', () => call('POST', '/gifts/' + g.id + '/clear-message')) : null),
+    h('td', {}, g.from || '—', h('br'), g.message || '', g.message ? danger('მილოცვის წაშლა', () => call('POST', '/gifts/' + g.id + '/clear-message')) : null,
+      g.decree ? h('div', {}, 'დეკრეტი: ' + g.decree + ' ', danger('×', () => call('POST', '/gifts/' + g.id + '/clear-decree'))) : null,
+      g.notes.map(n => h('div', {}, 'ნოტა (' + n.from + '): ' + n.text + ' ', danger('×', () => call('DELETE', '/notes/' + n.id))))),
     h('td', {}, g.buyerEmail || '—', h('br'), g.recipientEmail || ''),
-    h('td', { text: '$' + (g.totalPaid + g.cabinetPaid + g.seats.reduce((s, a) => s + a.totalPaid, 0)) }),
+    h('td', { text: '$' + (g.totalPaid + g.cabinetPaid + g.seats.reduce((s, a) => s + a.totalPaid, 0) + g.notes.reduce((s, n) => s + n.price, 0)) }),
     h('td', {}, g.seats.map(a => h('div', {}, (a.customTitle || a.post) + ': ' + a.name + ' ', danger('×', () => call('DELETE', '/seats/' + a.id))))),
     h('td', {}, danger('საჩუქრის წაშლა', () => call('DELETE', '/gifts/' + g.id))))));
 }

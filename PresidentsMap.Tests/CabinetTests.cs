@@ -34,7 +34,7 @@ public class CabinetTests(SiteFactory site) : IClassFixture<SiteFactory>
     {
         var id = await NewGiftAsync(2);
 
-        var (status, view) = await _http.PostAsync($"/api/gifts/{id}/cabinet/bundle", new { });   // 9 posts worth $11 -> $8
+        var (status, view) = await _http.PostAsync($"/api/gifts/{id}/cabinet/bundle", new { });   // 12 posts worth $14 -> $10
         var (free, _) = await _http.PostAsync($"/api/gifts/{id}/cabinet", new { post = "love", name = "Mariam", price = 0 });
         var (twice, _) = await _http.PostAsync($"/api/gifts/{id}/cabinet/bundle", new { });
 
@@ -42,7 +42,7 @@ public class CabinetTests(SiteFactory site) : IClassFixture<SiteFactory>
         Assert.True(view.GetProperty("prepaid").GetBoolean());
         Assert.Equal(200, free);
         Assert.Equal(409, twice);
-        Assert.Equal(10 + 8, (await _http.GetJsonAsync("/api/summary")).GetProperty("total").GetInt32() - await OtherRevenueAsync(id));
+        Assert.Equal(10 + 10, (await _http.GetJsonAsync("/api/summary")).GetProperty("total").GetInt32() - await OtherRevenueAsync(id));
     }
 
     [Fact]
@@ -80,6 +80,7 @@ public class CabinetTests(SiteFactory site) : IClassFixture<SiteFactory>
         var gifts = System.Text.Json.JsonDocument.Parse(await (await _http.SendAsync(req)).Content.ReadAsStringAsync()).RootElement;
         return gifts.EnumerateArray().Where(g => g.GetProperty("id").GetString() != mine).Sum(g =>
             g.GetProperty("totalPaid").GetInt32() + g.GetProperty("cabinetPaid").GetInt32()
-            + g.GetProperty("seats").EnumerateArray().Sum(s => s.GetProperty("totalPaid").GetInt32()));
+            + g.GetProperty("seats").EnumerateArray().Sum(s => s.GetProperty("totalPaid").GetInt32())
+            + g.GetProperty("notes").EnumerateArray().Sum(n => n.GetProperty("price").GetInt32()));
     }
 }
