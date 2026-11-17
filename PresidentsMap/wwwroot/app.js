@@ -219,6 +219,12 @@ function certificate(c, g) {
     copyBtn))];
 }
 
+// Text of the buy button: the action and the full price of everything currently chosen in the form.
+function buyLabel() {
+  const price = priceOf(selected);
+  return (day.gifts[selected] ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price + (draft.immune ? immunityOf(price) : 0) + titleFee() + decreeFee());
+}
+
 function renderPanel() {
   if (!byId[selected]) return;
   const c = byId[selected], taken = day.gifts[selected], certId = taken ? mineId(selected, date, taken.coups) : null;
@@ -251,7 +257,7 @@ function renderPanel() {
         h('select', { id: 'f-title', onchange: e => { draft.title = e.target.value; panelKey = ''; render(); } },
           Object.keys(TITLES).map(k => h('option', { value: k, selected: draft.title === k, text: t(TITLES[k]) + (k === 'president' ? '' : ' +' + money(titlePrice)) })))),
       h('label', { class: 'field' }, t('დეკრეტი: ერთი ხალისიანი კანონი სერტიფიკატზე (არასავალდებულო)'), h('b', { text: ' +' + money(Pay.decreePrice) }),
-        h('input', { id: 'f-decree', type: 'text', maxlength: '100', placeholder: t('მაგ. დღეს ყველა ყავა უფასოა'), value: draft.decree, oninput: e => { draft.decree = e.target.value; }, onchange: () => { panelKey = ''; render(); } })),
+        h('input', { id: 'f-decree', type: 'text', maxlength: '100', placeholder: t('მაგ. დღეს ყველა ყავა უფასოა'), value: draft.decree, oninput: e => { draft.decree = e.target.value; const b = $('buy-btn'); if (b) b.textContent = buyLabel(); } })),
       h('label', { class: 'field' }, t('შენი ელფოსტა: ქვითარი და შეტყობინება, თუ ჩამოაგდებენ (არასავალდებულო)'),
         h('input', { id: 'f-email', type: 'email', maxlength: '254', autocomplete: 'email', value: draft.email, oninput: e => { draft.email = e.target.value; } })),
       h('label', { class: 'field' }, t('მიმღების ელფოსტა: სერტიფიკატი მიუვა საჩუქრის დღეს (არასავალდებულო)'),
@@ -260,7 +266,7 @@ function renderPanel() {
         h('input', { id: 'f-immune', type: 'checkbox', checked: draft.immune, onchange: e => { draft.immune = e.target.checked; panelKey = ''; render(); } }),
         h('span', {}, t('იმუნიტეტი: ვერავინ ჩამოაგდებს'), h('b', { text: ' +' + money(immunityOf(price)) }))),
       err ? h('p', { class: 'err', text: err }) : null,
-      h('button', { class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: (taken ? t('მოაწყვე გადატრიალება · ') : t('აჩუქე ეს დღე · ')) + money(price + (draft.immune ? immunityOf(price) : 0) + titleFee() + decreeFee()) }),
+      h('button', { id: 'buy-btn', class: 'btn' + (taken ? ' coup' : ''), type: 'button', onclick: startPay, text: buyLabel() }),
       taken ? null : h('p', { class: 'small', text: t('ფასი ქვეყნის ფართობზეა დამოკიდებული. სადღესასწაულო დღეებში (ვალენტინობა, 8 მარტი, ახალი წელი) ორმაგია.') }));
   } else {
     kids.push(h('div', { class: 'pay' },
